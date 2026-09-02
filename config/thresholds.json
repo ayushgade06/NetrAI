@@ -91,5 +91,25 @@
     "foveaDiscDiameters": 2.2,
     "foveaSearchWindow": 90,
     "odFallbackRadiusFraction": 0.18
+  },
+  "sim": {
+    "_comment": "Track C (Capacity model). DEFAULT district-programme parameters mirroring the 15 masked Simulink parameters, plus solver settings. These are SIMULATION inputs, not clinical measurements. inferenceSecPerImage and reviewSecPerCase are seeded here as documented ASSUMPTIONS; netra.sim.buildParams overrides them from measured latency (timing.log) and audit data (auditStats) when available, and the UI labels each parameter measured vs assumed. autoClearRate default 0 = every case reviewed (baseline); the app derives the enabled value from the routing split.",
+    "annualPatients": 100000,
+    "campDaysPerYear": 250,
+    "imagesPerPatient": 2,
+    "arrivalVariability": 0.25,
+    "qualityRejectRate": 0.12,
+    "recaptureSuccessRate": 0.80,
+    "imageSizeMB": 2.5,
+    "bandwidthMbps": 4,
+    "inferenceSecPerImage": 3.0,
+    "processingNodes": 1,
+    "autoClearRate": 0.0,
+    "reviewers": 1,
+    "reviewSecPerCase": 30,
+    "reviewerHoursPerDay": 2,
+    "simDays": 30,
+    "solverStepDays": 1,
+    "maxRuntimeSeconds": 10
   }
 }

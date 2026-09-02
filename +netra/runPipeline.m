@@ -45,6 +45,15 @@ function cr = runPipeline(cr, cfg, models)
     end
 
     cr.timing.total = toc(tTotal);
+
+    % Track C: append this run's per-stage timings to data/timing.log so the
+    % Simulink capacity model can source inferenceSecPerImage from measured
+    % latency (netra.util.latencyStats reads this file). Best-effort only - a
+    % logging failure must never affect the returned caseRecord.
+    try
+        netra.util.appendTimingLog(cr);
+    catch
+    end
 end
 
 % ------------------------------------------------------------------------

@@ -481,3 +481,78 @@ and the fallback policy forbids saving any metric from a non-run:
   and `agreementScore`/`evidenceBullets` are written against the documented
   contract (`cr.lesions.<TYPE>.mask` / `.allMask` / `.count` / `.perQuadrant` /
   `.nearMacula`).
+
+---
+
+# Track C — Clinical report, review workflow, Simulink capacity model
+
+Two independent-of-the-image-pipeline deliverables: (1) the PDF report + timed
+review workflow, (2) the Simulink district capacity model.
+
+## Report + review
+
+- `+netra/+report/composite.m` — 2×2 annotated figure (original / enhanced /
+  lesion overlay / Grad-CAM). Any panel whose source stage is not `REAL` renders
+  a labelled placeholder naming the stage; a REAL-but-zero-lesion case still
+  shows the clean frame (not a placeholder).
+- `+netra/+report/template.m` — flattens a caseRecord into ordered report
+  sections (single source of report content).
+- `+netra/+report/generate.m` — MOCK→REAL. Renders a real multi-page PDF via
+  base-MATLAB graphics + `exportgraphics` (no Report Generator needed);
+  fallback to `print` if absent. See `docs/report_spec.md`.
+- `+netra/+store/logReview.m` — persists a review decision to the active
+  registry (real `registry.mat` if non-empty, else the mock seed) and to the
+  per-case `case.mat` if stored. Confirm→Agreed, Override/Ungradeable→Overridden,
+  Skip→non-decision (row stays unreviewed).
+- `+netra/+store/auditStats.m` — agreement rate, override breakdown by grade,
+  review-time median/p95. NaN/zeros on an empty registry (honest empty state).
+- `stats.m` gained `agreementRate`/`overrideCount`/`medianReviewSeconds`
+  (delegated to `auditStats`). Existing fields unchanged.
+
+## Latency logging → Simulink
+
+- `+netra/+util/appendTimingLog.m` + the **only** permitted change to
+  `runPipeline.m` (a best-effort call after `timing.total`) append per-run,
+  per-stage timings to `<storeRoot>/data/timing.log`.
+- `+netra/+util/latencyStats.m` aggregates that log into per-stage median/p95.
+- `netra.sim.buildParams` uses the measured grading-stage median as
+  `inferenceSecPerImage` and the measured review median as `reviewSecPerCase`;
+  both fall back to documented assumptions and are flagged measured/assumed in
+  the UI.
+
+## Simulink
+
+- `simulink/build_netra_capacity.m` builds `netra_capacity.slx` in code (base
+  discrete blocks, masked subsystem, `netraLog` To-Workspace). `.slx` is not
+  committed as a binary — the builder regenerates it. See `docs/simulink_model.md`.
+- `+netra/+sim/numericalModel.m` is the difference-equation reference the
+  blocks reproduce **and** the labelled MATLAB fallback when Simulink is absent.
+- `runCapacity` / `plotResults` / `recommendation` / `buildParams` / `paramNames`
+  / `conservationResidual` complete the §7 contract.
+- Conservation identity (`cumulativeArrived == cleared + reviewed + inQueue +
+  uploadBacklog + aiBacklog + pendingRecapture`) is the wiring-error test,
+  written first.
+
+## UI (Review Queue / Case Review / Capacity Planner only)
+
+- `finishReview` now calls `logReview` so decisions persist; toast shows elapsed
+  seconds + remaining count; auto-advance kept.
+- Review Queue "Est. review time" uses measured median when available; the
+  auto-cleared card shows a "% of routed" sub-caption.
+- Capacity Planner: 15-parameter form (each labelled MEASURED/ASSUMED), Run,
+  three scenario presets, three charts (queue-depth hero, arrived-vs-cleared,
+  utilisation), five KPI cards, a run-generated recommendation banner, an
+  "Open Model in Simulink" button, and a backend label that says plainly when
+  the MATLAB numerical fallback was used.
+
+## Environment note (important)
+
+Implemented on a machine with **no MATLAB installed**, so `startup_netra`,
+`runtests('tests')`, Report Generator/Simulink availability, and the live
+Simulink build/run could **not be executed or verified here**. All code is
+written to the frozen schema and the §7 contracts; the tests
+(`tReport`/`tReviewWorkflow`/`tSimulink`) are authored to run in MATLAB and must
+be run there before the demo. The `.slx` does not exist until
+`build_netra_capacity` is run once in MATLAB (or `runCapacity` builds it on
+first call). Until Simulink runs it, the Capacity Planner uses the clearly
+labelled MATLAB numerical model.

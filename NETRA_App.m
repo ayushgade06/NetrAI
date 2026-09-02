@@ -29,7 +29,10 @@ classdef NETRA_App < handle
         DevMode      logical = false            % dev-only verdict override
         ReviewTimer                             % stopwatch timer object
         ReviewStart                             % datetime when review began
+        ReviewerID   string = "reviewer01"      % logged as the review author
         QueueTable   table                      % cached queue
+        CPHandles    struct = struct()          % Capacity Planner handles
+        LastSimOut                              % last netra.sim.runCapacity out
         Root         string                     % project root
 
         % --- top-level UI handles ---
@@ -1540,9 +1543,20 @@ classdef NETRA_App < handle
                 stURgent = sum(Q.urgency == "Urgent");
                 app.RQHandles.kInQueue.set(height(Q));
                 app.RQHandles.kUrgent.set(stURgent);
-                app.RQHandles.kEst.set(round(height(Q)*0.5));  % ~30s each -> min
+                % Estimated total review time: measured median per case when we
+                % have audit data, else the 30s planning assumption.
+                a = app.safeAudit();
+                perCase = 30;
+                if isfinite(a.medianReviewSeconds) && a.medianReviewSeconds > 0
+                    perCase = a.medianReviewSeconds;
+                end
+                app.RQHandles.kEst.set(round(height(Q)*perCase/60));   % minutes
                 st = app.safeStats();
-                app.RQHandles.kCleared.set(st.autoCleared);
+                clearedPct = 0;
+                denom = st.autoCleared + st.referred;
+                if denom > 0, clearedPct = round(100*st.autoCleared/denom); end
+                app.RQHandles.kCleared.set(st.autoCleared, ...
+                    sprintf('%d%% of routed', clearedPct));
 
                 app.RQHandles.tbl.Data = app.queueTableData(Q);
                 app.drawAgreementChart();
@@ -1767,11 +1781,28 @@ classdef NETRA_App < handle
 
         function finishReview(app, action, finalGrade)
             secs = app.stopReviewTimer();
+            note = '';
+            uid = '';
             if ~isempty(app.CurrentCase)
                 app.CurrentCase.review.action = string(action);
                 app.CurrentCase.review.finalGrade = finalGrade;
+                app.CurrentCase.review.reviewerID = app.ReviewerID;
                 app.CurrentCase.review.seconds = secs;
                 app.CurrentCase.review.timestamp = datetime('now');
+                uid = char(app.CurrentCase.meta.uid);
+                if isfield(app.CRHandles,'note') && isvalid(app.CRHandles.note)
+                    note = char(app.CRHandles.note.Value);
+                end
+            end
+            % Persist the decision to the registry (and the case.mat if stored).
+            % A logging failure must not block the reviewer's flow, so wrap it.
+            if ~isempty(uid)
+                try
+                    netra.store.logReview(uid, char(action), finalGrade, ...
+                        char(app.ReviewerID), secs, note, app.Config);
+                catch ME
+                    fprintf(2, 'logReview failed for %s: %s\n', uid, ME.message);
+                end
             end
             % advance queue
             remaining = 0;
@@ -1811,10 +1842,7 @@ classdef NETRA_App < handle
 
             tab2 = uitab(tg, 'Title','Capacity Planner', ...
                 'BackgroundColor', t.color.bg, 'ForegroundColor', t.color.text);
-            app.emptyStatePanel(tab2, 'Populated in Phase 9', ...
-                {'Intended: Screening throughput by PHC', ...
-                 'Intended: Queue depth vs reviewer capacity', ...
-                 'Intended: District coverage projection (Simulink)'});
+            app.buildCapacityPlanner(tab2);
         end
 
         function emptyStatePanel(app, parent, phaseMsg, axisTitles)
@@ -1836,6 +1864,202 @@ classdef NETRA_App < handle
                     'FontName', t.font.family, 'FontSize', t.font.body, ...
                     'FontColor', t.color.textMuted);
             end
+        end
+
+        % ---------------- CAPACITY PLANNER ------------------------------
+        function buildCapacityPlanner(app, parent)
+            t = netra.ui.theme();
+            g = uigridlayout(parent, [1 2], 'ColumnWidth', {320, '1x'}, ...
+                'ColumnSpacing', t.space.gap, 'Padding', t.space.pad*[1 1 1 1], ...
+                'BackgroundColor', t.color.bg);
+
+            % ---- left: parameter form ----
+            lp = app.titledPanel(g, 'Parameters (measured / assumed)');
+            names = netra.sim.paramNames();
+            fg = uigridlayout(lp.Grid, [numel(names)+5 2], ...
+                'ColumnWidth', {'1.4x','1x'}, 'RowHeight', ...
+                [repmat({'fit'},1,numel(names)), {'fit','fit','fit','fit','fit'}], ...
+                'RowSpacing', 2, 'Padding',[0 0 0 0], 'BackgroundColor', t.color.panel);
+
+            p0 = app.defaultSimParams();     % seeds fields + measured/assumed flags
+            app.CPHandles.fields = struct();
+            app.CPHandles.srcLabels = struct();
+            for k = 1:numel(names)
+                nm = names{k};
+                src = p0.([nm '_src']);
+                lbl = uilabel(fg, 'Text', app.simLabel(nm, src), ...
+                    'FontName', t.font.family, 'FontSize', t.font.tiny, ...
+                    'FontColor', app.srcColor(src), 'WordWrap','on');
+                lbl.Layout.Row = k; lbl.Layout.Column = 1;
+                ef = uieditfield(fg, 'numeric', 'Value', p0.(nm), ...
+                    'FontName', t.font.family, 'FontSize', t.font.small, ...
+                    'BackgroundColor', t.color.panelAlt, 'FontColor', t.color.text);
+                ef.Layout.Row = k; ef.Layout.Column = 2;
+                app.CPHandles.fields.(nm) = ef;
+                app.CPHandles.srcLabels.(nm) = lbl;
+            end
+
+            % scenario preset buttons
+            rowRun = numel(names)+1;
+            sb = uigridlayout(fg, [1 3], 'Padding',[0 4 0 4], ...
+                'ColumnSpacing', 4, 'BackgroundColor', t.color.panel);
+            sb.Layout.Row = rowRun; sb.Layout.Column = [1 2];
+            app.mkButton(sb, 'S1 Baseline', @() app.onScenario(1), t.color.panelAlt);
+            app.mkButton(sb, 'S2 Auto-clear', @() app.onScenario(2), t.color.panelAlt);
+            app.mkButton(sb, 'S3 +Staffing', @() app.onScenario(3), t.color.panelAlt);
+
+            rb = uibutton(fg, 'Text', 'Run Simulation', ...
+                'FontName', t.font.family, 'FontSize', t.font.body, ...
+                'FontWeight','bold', 'FontColor', t.color.text, ...
+                'BackgroundColor', t.color.info, ...
+                'ButtonPushedFcn', @(~,~) app.wrap(@() app.onRunCapacity()));
+            rb.Layout.Row = rowRun+1; rb.Layout.Column = [1 2];
+
+            ob = uibutton(fg, 'Text', 'Open Model in Simulink', ...
+                'FontName', t.font.family, 'FontSize', t.font.small, ...
+                'FontColor', t.color.text, 'BackgroundColor', t.color.panelAlt, ...
+                'ButtonPushedFcn', @(~,~) app.wrap(@() app.onOpenModel()));
+            ob.Layout.Row = rowRun+2; ob.Layout.Column = [1 2];
+
+            app.CPHandles.backend = uilabel(fg, 'Text', 'Backend: (not run)', ...
+                'FontName', t.font.family, 'FontSize', t.font.tiny, ...
+                'FontColor', t.color.textMuted, 'WordWrap','on');
+            app.CPHandles.backend.Layout.Row = rowRun+3;
+            app.CPHandles.backend.Layout.Column = [1 2];
+
+            % ---- right: charts + KPIs + recommendation ----
+            rp = uigridlayout(g, [3 1], 'RowHeight', {'fit','1x','fit'}, ...
+                'RowSpacing', t.space.gap, 'Padding',[0 0 0 0], ...
+                'BackgroundColor', t.color.bg);
+            rp.Layout.Column = 2;
+
+            % recommendation banner
+            recPanel = uipanel(rp, 'BorderType','line', ...
+                'BackgroundColor', t.color.panelAlt, 'HighlightColor', t.color.border);
+            recPanel.Layout.Row = 1;
+            rg = uigridlayout(recPanel, [1 1], 'Padding', t.space.pad*[1 1 1 1], ...
+                'BackgroundColor', t.color.panelAlt);
+            app.CPHandles.rec = uilabel(rg, ...
+                'Text','Run a simulation to generate a staffing recommendation.', ...
+                'FontName', t.font.family, 'FontSize', t.font.body, ...
+                'FontColor', t.color.text, 'WordWrap','on');
+
+            % charts (3 stacked)
+            cp = uigridlayout(rp, [1 3], 'ColumnSpacing', t.space.gap, ...
+                'Padding',[0 0 0 0], 'BackgroundColor', t.color.bg);
+            cp.Layout.Row = 2;
+            app.CPHandles.axQueue = app.mkAxesPanel(cp, 'Queue depth (hero)');
+            app.CPHandles.axCum   = app.mkAxesPanel(cp, 'Arrived vs cleared');
+            app.CPHandles.axUtil  = app.mkAxesPanel(cp, 'Reviewer utilisation');
+
+            % KPI cards
+            kp = uigridlayout(rp, [1 5], 'ColumnSpacing', t.space.gapSm, ...
+                'Padding',[0 0 0 0], 'BackgroundColor', t.color.bg);
+            kp.Layout.Row = 3;
+            app.CPHandles.kThru = netra.ui.kpiCard(kp, "Throughput", 0, "/day");
+            app.CPHandles.kWait = netra.ui.kpiCard(kp, "p95 Wait", 0, "d");
+            app.CPHandles.kPeak = netra.ui.kpiCard(kp, "Peak Backlog", 0, "");
+            app.CPHandles.kUtil = netra.ui.kpiCard(kp, "Utilisation", 0, "%");
+            app.CPHandles.kClear = netra.ui.kpiCard(kp, "Auto-Cleared", 0, "%");
+        end
+
+        function p = defaultSimParams(app)
+            simDir = fullfile(char(app.Root), 'simulink');
+            if exist('default_params','file') ~= 2, addpath(simDir); end
+            p = default_params(app.Config);
+        end
+
+        function s = simLabel(~, nm, src)
+            s = sprintf('%s [%s]', nm, upper(char(src)));
+        end
+
+        function c = srcColor(app, src)
+            t = netra.ui.theme();
+            if string(src) == "measured", c = t.color.pass; else, c = t.color.warn; end
+        end
+
+        function ui = readSimForm(app)
+            names = netra.sim.paramNames();
+            ui = struct();
+            for k = 1:numel(names)
+                ui.(names{k}) = app.CPHandles.fields.(names{k}).Value;
+            end
+        end
+
+        function writeSimForm(app, p)
+            names = netra.sim.paramNames();
+            for k = 1:numel(names)
+                nm = names{k};
+                app.CPHandles.fields.(nm).Value = p.(nm);
+                if isfield(p, [nm '_src'])
+                    src = p.([nm '_src']);
+                    app.CPHandles.srcLabels.(nm).Text = app.simLabel(nm, src);
+                    app.CPHandles.srcLabels.(nm).FontColor = app.srcColor(src);
+                end
+            end
+        end
+
+        function onScenario(app, idx)
+            app.wrap(@() localScen());
+            function localScen()
+                simDir = fullfile(char(app.Root), 'simulink');
+                if exist('scenarios','file') ~= 2, addpath(simDir); end
+                sc = scenarios(app.Config);
+                app.writeSimForm(sc(idx).params);
+                app.onRunCapacity();
+            end
+        end
+
+        function onRunCapacity(app)
+            ui = app.readSimForm();
+            latency = netra.util.latencyStats(app.Config);
+            p = netra.sim.buildParams(ui, latency, app.Config);
+            app.writeSimForm(p);                 % reflect measured/assumed flags
+
+            out = netra.sim.runCapacity(p);
+            app.LastSimOut = out;
+
+            netra.sim.plotResults(out, {app.CPHandles.axQueue, ...
+                app.CPHandles.axCum, app.CPHandles.axUtil});
+            for ax = [app.CPHandles.axQueue, app.CPHandles.axCum, app.CPHandles.axUtil]
+                app.styleAxes(ax);
+            end
+
+            s = out.signals;
+            thru = mean(s.reviewedCount + s.autoClearedCount);
+            app.CPHandles.kThru.set(round(thru));
+            app.CPHandles.kWait.set(round(s.p95WaitDays,1));
+            app.CPHandles.kPeak.set(round(max(s.reviewQueueDepth)));
+            app.CPHandles.kUtil.set(round(100*mean(s.reviewerUtilisation)));
+            clr = 0; tot = sum(s.autoClearedCount)+sum(s.reviewedCount);
+            if tot>0, clr = round(100*sum(s.autoClearedCount)/tot); end
+            app.CPHandles.kClear.set(clr);
+
+            app.CPHandles.rec.Text = netra.sim.recommendation(out, p);
+            if out.source == "matlab_numerical"
+                app.CPHandles.backend.Text = sprintf( ...
+                    'Backend: MATLAB numerical model (Simulink unavailable). Runtime %.2fs.', ...
+                    out.runtimeSeconds);
+                app.CPHandles.backend.FontColor = netra.ui.theme().color.warn;
+            else
+                app.CPHandles.backend.Text = sprintf( ...
+                    'Backend: Simulink (netra_capacity.slx). Runtime %.2fs.', ...
+                    out.runtimeSeconds);
+                app.CPHandles.backend.FontColor = netra.ui.theme().color.pass;
+            end
+        end
+
+        function onOpenModel(app)
+            simDir = fullfile(char(app.Root), 'simulink');
+            slx = fullfile(simDir, 'netra_capacity.slx');
+            if exist('open_system','file') == 0 || license('test','Simulink') ~= 1
+                uialert(app.Fig, sprintf(['Simulink is required to open the ' ...
+                    'model.\nModel file: %s'], slx), 'Simulink unavailable');
+                return;
+            end
+            addpath(simDir);
+            if ~isfile(slx), build_netra_capacity(slx); end
+            open_system(slx);
         end
     end
 
@@ -2341,6 +2565,17 @@ classdef NETRA_App < handle
 
         function T = safeRegistry(~)
             T = netra.store.internalLoadRegistry();
+        end
+
+        function a = safeAudit(app)
+            try
+                a = netra.store.auditStats(app.Config);
+            catch
+                a = struct('reviewedCount',0,'agreementRate',NaN, ...
+                    'overrideCount',0,'overridesByGrade',zeros(1,5), ...
+                    'reviewSeconds',zeros(0,1),'medianReviewSeconds',NaN, ...
+                    'p95ReviewSeconds',NaN);
+            end
         end
 
         function k = key(~, name)

@@ -67,6 +67,14 @@ function s = stats(cfg, dateRange)
 
     % queueDepthByHour: arrivals per hour-of-day (0..23), trimmed to used span
     s.queueDepthByHour = byHour(T);
+
+    % Audit fields (Track C). Delegated to netra.store.auditStats so agreement
+    % and review-time metrics have a single source of truth. NaN when no case
+    % has been reviewed yet - the dashboard renders that as an empty state.
+    a = netra.store.auditStats(cfg);
+    s.agreementRate       = a.agreementRate;
+    s.overrideCount       = a.overrideCount;
+    s.medianReviewSeconds = a.medianReviewSeconds;
 end
 
 % ------------------------------------------------------------------------
