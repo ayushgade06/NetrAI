@@ -59,12 +59,15 @@ function [feat, detail] = extractFeatures(img, fovMask, cfg)
         return;
     end
 
-    % --- bound working resolution ---------------------------------------
-    % Downsample large frames so feature extraction is fast and computed at a
-    % consistent scale. maxSide is derived from the configured targetSize so the
-    % "working scale" tracks the rest of the pipeline (typically 512).
-    maxSide = cfg.thresholds.preproc.targetSize * 2;   % 1024 by default
-    [img, fovMask, computedAt] = boundResolution(img, fovMask, maxSide);
+    % --- FIX working resolution -----------------------------------------
+    % Focus features (Laplacian/Tenengrad variance) depend on the spatial pixel
+    % scale, so merely CAPPING the size left them resolution-dependent: the same
+    % eye at 512 vs 1024 px gave a ~73% focus drift. Resize the long side to a
+    % FIXED targetSize (down or up) so focus is always measured at one scale and
+    % the feature is genuinely resolution-invariant (real fundus images arrive at
+    % many resolutions). This is also fast and bounded.
+    fixedSide = cfg.thresholds.preproc.targetSize;     % 512 by default
+    [img, fovMask, computedAt] = fixResolution(img, fovMask, fixedSide);
     detail.computedAt = computedAt;
 
     % --- green channel, 0..1 --------------------------------------------
@@ -169,14 +172,15 @@ function detail = fillDetail(detail, feat, names, quadMeans, intensityVar, nInsi
     detail.nInsideFov    = nInside;
 end
 
-function [imgOut, maskOut, side] = boundResolution(img, mask, maxSide)
-%BOUNDRESOLUTION  Downsample so the longer side <= maxSide (never upsample).
+function [imgOut, maskOut, side] = fixResolution(img, mask, fixedSide)
+%FIXRESOLUTION  Resize so the LONGER side == fixedSide (up or down), for a
+%   resolution-invariant working scale. Within 2% already -> leave as-is.
     [h, w, ~] = size(img);
     longSide = max(h, w);
-    if longSide <= maxSide
+    if abs(longSide - fixedSide) <= 0.02*fixedSide
         imgOut = img; maskOut = mask; side = longSide; return;
     end
-    s = maxSide / longSide;
+    s = fixedSide / longSide;
     imgOut  = imresize(img, s);
     maskOut = imresize(mask, [size(imgOut,1) size(imgOut,2)], 'nearest');
     side    = max(size(imgOut,1), size(imgOut,2));
