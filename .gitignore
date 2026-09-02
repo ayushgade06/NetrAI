@@ -1,7 +1,11 @@
-# NETRA .gitignore
+﻿# NETRA .gitignore
 
 # Runtime case output (never committed)
 data/cases/
+# Runtime CSV exports from the dashboard
+data/exports/
+# Note: data/mock/registry_seed.mat IS committed so the demo dashboard/queue
+# are populated on a fresh clone. Regenerate with seedMockRegistry if needed.
 
 # MATLAB autosave / temp
 *.asv
@@ -20,7 +24,7 @@ octave-workspace
 Thumbs.db
 
 # Large files (>50 MB) must not be committed. Git cannot filter by size in
-# .gitignore directly; enforce via the pre-commit check below or manually.
+# .gitignore directly; enforce via a pre-commit check or manually.
 # Common large binaries kept out by extension:
 *.zip
 *.tar
