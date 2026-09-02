@@ -12,7 +12,8 @@ function startup_netra()
 %   base MATLAB.
 
     root = fileparts(mfilename('fullpath'));
-    addpath(root);   % +netra is a package under root; only root need be on path
+    addpath(root);                       % +netra package + NETRA_App live here
+    addpath(fullfile(root, 'tools'));    % seedMockRegistry (Phase 1)
 
     fprintf('NETRA startup\n');
     fprintf('  project root : %s\n', root);
@@ -54,7 +55,17 @@ function startup_netra()
              'only base MATLAB, but later phases will require them.']);
     end
 
-    fprintf('NETRA ready.\n');
+    % --- mock registry hint (Phase 1) ------------------------------------
+    seed = fullfile(root, 'data', 'mock', 'registry_seed.mat');
+    if ~isfile(seed)
+        fprintf(['  mock data    : NOT FOUND. Run  seedMockRegistry  to ', ...
+                 'populate the dashboard and review queue.\n']);
+    else
+        fprintf('  mock data    : registry_seed.mat present\n');
+    end
+
+    fprintf('\nNETRA ready.  Launch the UI with:  app = NETRA_App;\n');
+    fprintf('(Dev verdict override: app = NETRA_App(''DevMode'', true);)\n');
 end
 
 % ------------------------------------------------------------------------
