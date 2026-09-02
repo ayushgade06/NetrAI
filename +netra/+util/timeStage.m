@@ -19,6 +19,15 @@ function [out, elapsed] = timeStage(fnHandle, varargin)
     end
 
     t0 = tic;
-    out = fnHandle(varargin{:});
+    if nargout(fnHandle) == 0
+        % Stage yields no output (e.g. it only ever errors). Call it for its
+        % side effect / to let its own error propagate, rather than requesting
+        % an output MATLAB won't bind (which would throw MATLAB:maxlhs and mask
+        % the real failure).
+        fnHandle(varargin{:});
+        out = [];
+    else
+        out = fnHandle(varargin{:});
+    end
     elapsed = toc(t0);
 end

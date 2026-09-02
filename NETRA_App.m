@@ -20,6 +20,10 @@ classdef NETRA_App < handle
         Config       struct                     % loaded once at construction
         Models       struct                     % loaded once at construction
         CurrentCase                             % active caseRecord or []
+        OrigImage                               % last loaded uint8 HxWx3 (pristine)
+        WorkImage                               % working image (maybe degraded)
+        LoadedPath   string = ""                % path of the loaded image
+        Degradation  struct = struct('type',"none",'severity',0,'seed',0)
         Mode         string = "Field"           % "Field" | "Clinician"
         ActiveView   string = "Dashboard"
         DevMode      logical = false            % dev-only verdict override
@@ -284,12 +288,13 @@ classdef NETRA_App < handle
             app.DashHandles.kQueue    = netra.ui.kpiCard(kg, "Queue Depth", s.queueDepth, "");
 
             % --- action buttons row ---
-            bg = uigridlayout(g, [1 6], 'Padding',[0 0 0 0], ...
+            bg = uigridlayout(g, [1 7], 'Padding',[0 0 0 0], ...
                 'ColumnSpacing', t.space.gap, ...
-                'ColumnWidth', {'1x','1x','1x','1x','1x','1x'}, ...
+                'ColumnWidth', {'1x','1x','1x','1x','1x','1x','1x'}, ...
                 'BackgroundColor', t.color.bg);
             bg.Layout.Row = 2;
             app.mkButton(bg, 'New Screening', @() app.switchView("New Screening"), t.color.info);
+            app.mkButton(bg, 'Batch Import Folder', @() app.onBatchImport(), t.color.info);
             qcount = s.queueDepth;
             app.DashHandles.btnQueue = app.mkButton(bg, sprintf('Open Review Queue (%d)', qcount), ...
                 @() app.switchView("Review Queue"), t.color.panelAlt);
@@ -398,23 +403,59 @@ classdef NETRA_App < handle
             end
             T = sortrows(T, 'timestamp', 'descend');
             T = T(1:min(12, height(T)), :);
-            data = [cellstr(T.uid), cellstr(T.patientID), ...
-                    cellstr(string(T.age)), cellstr(T.eye), ...
-                    cellstr(string(T.icdr)), cellstr(T.urgency), ...
-                    cellstr(T.routingDecision)];
+
+            % Mock-graded rows get a leading asterisk on the UID so no one
+            % mistakes a demo grade for a measurement. A row is mock-graded if
+            % its provenanceSummary says grading=MOCK, or if the table has no
+            % provenanceSummary column at all (that's the Phase 1 mock seed).
+            uidCol = string(T.uid);
+            if ismember('provenanceSummary', T.Properties.VariableNames)
+                isMockGraded = contains(T.provenanceSummary, "grading=MOCK") | ...
+                               contains(T.provenanceSummary, "grading=FAILED");
+            else
+                isMockGraded = true(height(T),1);   % mock seed -> all demo grades
+            end
+            uidCol(isMockGraded) = "* " + uidCol(isMockGraded);
+
+            data = [cellstr(uidCol), cellstr(string(T.patientID)), ...
+                    cellstr(string(T.age)), cellstr(string(T.eye)), ...
+                    cellstr(string(T.icdr)), cellstr(string(T.urgency)), ...
+                    cellstr(string(T.routingDecision))];
             app.DashHandles.tblRecent.Data = data;
+
+            % Notice: are we on the real registry, or falling back to the seed?
+            if isfield(app.DashHandles, 'recentNotice') && isvalid(app.DashHandles.recentNotice)
+                real = netra.store.registry();
+                if isempty(real)
+                    app.DashHandles.recentNotice.Text = ...
+                        'No real registry yet - showing FICTIONAL mock seed. * = mock grade.';
+                    app.DashHandles.recentNotice.FontColor = netra.ui.theme().color.warn;
+                else
+                    app.DashHandles.recentNotice.Text = ...
+                        '* grade is MOCK (demo), not a measurement.';
+                    app.DashHandles.recentNotice.FontColor = netra.ui.theme().color.textMuted;
+                end
+            end
         end
 
         function tbl = mkRecentTable(app, parent)
             t = netra.ui.theme();
             pnl = app.titledPanel(parent, 'Recent Cases');
-            tbl = uitable(pnl.Grid, ...
+            % Two rows: table + a legend/notice line.
+            gg = uigridlayout(pnl.Grid, [2 1], 'RowHeight', {'1x','fit'}, ...
+                'RowSpacing', t.space.gapSm, 'Padding',[0 0 0 0], ...
+                'BackgroundColor', t.color.panel);
+            tbl = uitable(gg, ...
                 'ColumnName', {'UID','Patient','Age','Eye','Grade','Urgency','Decision'}, ...
                 'FontName', t.font.family, 'FontSize', t.font.small, ...
                 'BackgroundColor', [t.color.panelAlt; t.color.panel], ...
                 'ForegroundColor', t.color.text, ...
                 'RowName', {}, ...
                 'CellSelectionCallback', @(src,ev) app.onRecentRowSelected(ev));
+            app.DashHandles.recentNotice = uilabel(gg, ...
+                'Text', '* grade is MOCK (demo), not a measurement.', ...
+                'FontName', t.font.family, 'FontSize', t.font.tiny, ...
+                'FontColor', t.color.textMuted);
         end
 
         function onRecentRowSelected(app, ev)
@@ -483,48 +524,164 @@ classdef NETRA_App < handle
                 'FontName', t.font.family, 'FontSize', t.font.small, ...
                 'FontColor', t.color.textMuted);
 
-            % Simulate Field Capture (disabled in Phase 1)
+            % Simulate Field Capture (ENABLED in Phase 2)
             app.mkFieldLabel(fg, 'Simulate Capture');
             simdd = uidropdown(fg, 'Items', ...
-                {'Blur','Underexposed','Overexposed','Partial FOV','Haze','Random'}, ...
-                'Enable','off', 'Tooltip','Available in Phase 2', ...
+                {'(none)','Blur','Underexposed','Overexposed','Partial FOV','Haze','Random'}, ...
+                'Enable','on', ...
+                'Tooltip','Applies a SYNTHETIC degradation to the loaded image (not a real capture).', ...
                 'FontName', t.font.family, 'FontSize', t.font.body, ...
-                'BackgroundColor', t.color.panelAlt, 'FontColor', t.color.textDim);
+                'BackgroundColor', t.color.panelAlt, 'FontColor', t.color.text, ...
+                'ValueChangedFcn', @(src,~) app.onSimulateCapture(src.Value));
             app.NewHandles.simCapture = simdd;
+
+            % Severity slider (0-1, default 0.6)
+            app.mkFieldLabel(fg, 'Severity');
+            app.NewHandles.severity = uislider(fg, 'Limits',[0 1], 'Value',0.6, ...
+                'MajorTicks', [0 0.5 1], ...
+                'FontName', t.font.family, 'FontSize', t.font.tiny, ...
+                'FontColor', t.color.textMuted);
 
             % buttons
             app.mkFieldLabel(fg, '');
             brow = uigridlayout(fg, [1 4], 'Padding',[0 0 0 0], ...
                 'ColumnSpacing', t.space.gapSm, 'BackgroundColor', t.color.panel);
             app.mkButton(brow, 'Load Image', @() app.onLoadImage(), t.color.info);
-            app.mkButton(brow, 'Analyze', @() app.onAnalyze(), t.color.pass);
+            app.NewHandles.btnAnalyze = app.mkButton(brow, 'Analyze', @() app.onAnalyze(), t.color.pass);
+            app.NewHandles.btnAnalyze.Enable = 'off';   % enabled once a valid image loads
+            app.mkButton(brow, 'Reset Original', @() app.onResetOriginal(), t.color.panelAlt);
             app.mkButton(brow, 'Clear', @() app.onClearForm(), t.color.panelAlt);
 
-            % --- right: drop-zone + thumbnail ---
+            % --- right: preview (tag + thumbnail + FOV/plausibility line) ---
             dp = app.titledPanel(g, 'Image Preview');
-            dg = uigridlayout(dp.Grid, [1 1], 'Padding',[0 0 0 0], ...
+            dg = uigridlayout(dp.Grid, [3 1], 'RowHeight', {'fit','1x','fit'}, ...
+                'RowSpacing', t.space.gapSm, 'Padding',[0 0 0 0], ...
                 'BackgroundColor', t.color.panel);
+            % Persistent synthetic-degradation tag (hidden until one is applied).
+            app.NewHandles.simTag = uilabel(dg, 'Text','', ...
+                'FontName', t.font.family, 'FontSize', t.font.small, ...
+                'FontWeight','bold', 'FontColor', t.color.warn, ...
+                'BackgroundColor', t.color.bannerWarnBg, ...
+                'HorizontalAlignment','center', 'Visible','off');
             app.NewHandles.thumb = uiimage(dg, ...
                 'ScaleMethod','fit', 'BackgroundColor', t.color.panelAlt);
+            app.NewHandles.previewInfo = uilabel(dg, 'Text','', ...
+                'FontName', t.font.family, 'FontSize', t.font.small, ...
+                'FontColor', t.color.textMuted, 'WordWrap','on');
         end
 
         function onLoadImage(app)
             app.wrap(@() localLoad());
             function localLoad()
-                [f, p] = uigetfile({'*.jpg;*.jpeg;*.png;*.tif;*.tiff', ...
-                    'Images'}, 'Select a fundus image');
+                exts = app.Config.thresholds.io.supportedFormats;   % {'.jpg',...}
+                filt = strjoin("*" + string(exts), ';');
+                [f, p] = uigetfile({char(filt), 'Fundus images'}, ...
+                    'Select a fundus image');
                 if isequal(f, 0), return; end
                 full = fullfile(p, f);
+
+                % Real load (also enforces the quarantine guard + format check).
                 try
-                    imfinfo(full);   % validate readable; no pixel decode needed
-                catch
-                    uialert(app.Fig, sprintf('"%s" is not a readable image.', f), ...
-                        'Load failed');
+                    [img, ~] = netra.io.loadImage(full);
+                catch ME
+                    uialert(app.Fig, ME.message, 'Load failed');
                     return;
                 end
+
+                % Structural validation.
+                [okV, reasonV] = netra.io.validateImage(img, app.Config);
+                if ~okV
+                    uialert(app.Fig, char(reasonV), 'Invalid image');
+                    return;   % form stays populated; Analyze disabled below
+                end
+
+                % Plausibility guard (heuristic, not a classifier).
+                [isFundus, score, detail] = netra.io.isPlausibleFundus(img, app.Config);
+                if ~isFundus
+                    names  = ["near-black border","circular bright region","red-channel dominance"];
+                    scores = [detail.borderScore, detail.circleScore, detail.redScore];
+                    [~, worst] = min(scores);
+                    uialert(app.Fig, sprintf(...
+                        ['This does not look like a fundus image (plausibility %.2f < %.2f).\n' ...
+                         'Weakest cue: %s (%.2f).'], score, ...
+                         app.Config.thresholds.io.fundusPlausibilityMin, names(worst), scores(worst)), ...
+                        'Not a fundus image');
+                    app.setAnalyzeEnabled(false);
+                    return;
+                end
+
+                % Accept: stash pristine + working image, clear any degradation.
+                app.OrigImage = img;
+                app.WorkImage = img;
+                app.LoadedPath = string(full);
+                app.Degradation = struct('type',"none",'severity',0,'seed',0);
+                app.NewHandles.simCapture.Value = '(none)';
+                app.NewHandles.simTag.Visible = 'off';
+
                 app.NewHandles.imgPathLbl.Text = f;
                 app.NewHandles.imgPathLbl.UserData = full;
-                app.NewHandles.thumb.ImageSource = full;
+                app.refreshPreview(score);
+                app.setAnalyzeEnabled(true);
+            end
+        end
+
+        function onSimulateCapture(app, val)
+            app.wrap(@() localSim());
+            function localSim()
+                if isempty(app.OrigImage)
+                    uialert(app.Fig, 'Load an image first.', 'No image');
+                    app.NewHandles.simCapture.Value = '(none)';
+                    return;
+                end
+                if strcmp(val, '(none)')
+                    app.onResetOriginal(); return;
+                end
+                map = containers.Map( ...
+                    {'Blur','Underexposed','Overexposed','Partial FOV','Haze','Random'}, ...
+                    {'blur','underexposed','overexposed','partialFOV','haze','random'});
+                ty = map(val);
+                sev = app.NewHandles.severity.Value;
+                seed = 26038;   % fixed -> reproducible demo degradation
+                out = netra.io.simulateFieldCapture(app.OrigImage, ty, sev, seed);
+                app.WorkImage = out;
+                app.Degradation = struct('type',string(ty),'severity',sev,'seed',seed);
+
+                app.NewHandles.simTag.Text = sprintf('SYNTHETIC DEGRADATION: %s (severity %.2f)', ty, sev);
+                app.NewHandles.simTag.Visible = 'on';
+                app.refreshPreview([]);
+            end
+        end
+
+        function onResetOriginal(app)
+            if isempty(app.OrigImage), return; end
+            app.WorkImage = app.OrigImage;
+            app.Degradation = struct('type',"none",'severity',0,'seed',0);
+            app.NewHandles.simCapture.Value = '(none)';
+            app.NewHandles.simTag.Visible = 'off';
+            app.refreshPreview([]);
+        end
+
+        function refreshPreview(app, plausScore)
+            % Render the working image with the detected FOV outline overlaid,
+            % and a one-line FOV/plausibility summary.
+            img = app.WorkImage;
+            [mask, m] = netra.preproc.fovMask(img, app.Config);
+            thumb = app.overlayFovOutline(img, mask);
+            app.NewHandles.thumb.ImageSource = thumb;
+
+            parts = sprintf('FOV completeness: %.2f', m.completeness);
+            if isfield(m,'fallback') && m.fallback
+                parts = [parts '  (mask fell back to full frame)'];
+            end
+            if nargin >= 2 && ~isempty(plausScore)
+                parts = [parts sprintf('   |   plausibility: %.2f', plausScore)];
+            end
+            app.NewHandles.previewInfo.Text = parts;
+        end
+
+        function setAnalyzeEnabled(app, tf)
+            if isfield(app.NewHandles,'btnAnalyze') && isvalid(app.NewHandles.btnAnalyze)
+                app.NewHandles.btnAnalyze.Enable = matlab.lang.OnOffSwitchState(tf);
             end
         end
 
@@ -536,6 +693,13 @@ classdef NETRA_App < handle
             app.NewHandles.imgPathLbl.Text = '(none loaded)';
             app.NewHandles.imgPathLbl.UserData = [];
             app.NewHandles.thumb.ImageSource = '';
+            app.NewHandles.simCapture.Value = '(none)';
+            app.NewHandles.simTag.Visible = 'off';
+            app.NewHandles.previewInfo.Text = '';
+            app.OrigImage = [];
+            app.WorkImage = [];
+            app.LoadedPath = "";
+            app.Degradation = struct('type',"none",'severity',0,'seed',0);
         end
 
         function onAnalyze(app)
@@ -546,26 +710,29 @@ classdef NETRA_App < handle
                     uialert(app.Fig, 'Patient ID is required before analysis.', ...
                         'Missing field'); return;
                 end
-                imgPath = app.NewHandles.imgPathLbl.UserData;
-                if isempty(imgPath)
-                    imgPath = char(fullfile(app.Root, 'data','demo','sample01.jpg'));
-                    if ~isfile(imgPath)
-                        uialert(app.Fig, 'No image loaded and no demo image found.', ...
-                            'Missing image'); return;
-                    end
+                if isempty(app.WorkImage)
+                    uialert(app.Fig, 'Load a valid fundus image first.', ...
+                        'Missing image'); return;
                 end
 
                 meta = struct('patientID', string(pid), ...
                     'age', app.NewHandles.age.Value, ...
                     'dmYears', app.NewHandles.dmYears.Value, ...
                     'eye', string(app.NewHandles.eye.Value), ...
-                    'phcID', app.phcIdFromLabel(app.NewHandles.phc.Value));
+                    'phcID', app.phcIdFromLabel(app.NewHandles.phc.Value), ...
+                    'seq', app.nextSeq(app.phcIdFromLabel(app.NewHandles.phc.Value)));
 
                 d = uiprogressdlg(app.Fig, 'Title','Running NETRA pipeline', ...
-                    'Message','Analysing (mock pipeline)...', 'Indeterminate','on');
-                cleanup = onCleanup(@() delete(d));
+                    'Message','Ingesting image, masking FOV, persisting...', ...
+                    'Indeterminate','on');
+                cleanup = onCleanup(@() delete(d)); %#ok<NASGU>
 
-                cr = netra.newCaseRecord(char(imgPath), meta);
+                % Ingest path: real pixels drive real FOV/crop and persistence.
+                cr = netra.newCaseRecord(char(app.LoadedPath), meta);
+                cr.img.raw = app.WorkImage;         % pristine OR degraded working image
+                if app.Degradation.type ~= "none"
+                    cr.preproc.syntheticDegradation = app.Degradation;   % additive, recorded
+                end
                 cr = netra.runPipeline(cr, app.Config, app.Models);
                 app.CurrentCase = cr;
                 app.Banner.update(cr.provenance);
@@ -573,6 +740,29 @@ classdef NETRA_App < handle
                 app.populateQualityGate(cr);
                 app.switchView("Quality Gate");
             end
+        end
+
+        function s = nextSeq(app, phcID)
+            % Next per-(phc,today) capture sequence, from the real registry.
+            T = netra.store.registry();
+            s = 1;
+            if isempty(T), return; end
+            today = string(datetime('now','Format','yyyyMMdd'));
+            same = T(T.phcID == string(phcID), :);
+            if isempty(same), return; end
+            % uids look like PHC-<yyyymmdd>-<seq>-<eye>; count today's.
+            todays = same(contains(same.uid, "-" + today + "-"), :);
+            s = height(todays) + 1;
+        end
+
+        function out = overlayFovOutline(~, img, mask)
+            % Draw the FOV mask boundary on a copy of img (cyan), for preview.
+            out = img;
+            if isempty(mask) || ~any(mask(:)), return; end
+            edge = mask & ~imerode(mask, strel('disk', 2));
+            R = out(:,:,1); G = out(:,:,2); B = out(:,:,3);
+            R(edge) = 51; G(edge) = 199; B(edge) = 219;   % theme cyan-ish
+            out = cat(3, R, G, B);
         end
     end
 
@@ -592,15 +782,26 @@ classdef NETRA_App < handle
             % verdict banner (full width, row 1)
             vb = uipanel(g, 'BorderType','none', 'BackgroundColor', t.color.panelAlt);
             vb.Layout.Row = 1; vb.Layout.Column = [1 2];
-            vbg = uigridlayout(vb, [1 2], 'ColumnWidth', {'1x','fit'}, ...
+            vbg = uigridlayout(vb, [1 3], 'ColumnWidth', {'1x','fit','fit'}, ...
+                'ColumnSpacing', t.space.gap, ...
                 'Padding', t.space.pad*[1 1 1 1], 'BackgroundColor', t.color.panelAlt);
             app.QGHandles.verdict = uilabel(vbg, 'Text', 'VERDICT', ...
                 'FontName', t.font.family, 'FontSize', t.font.h2, ...
                 'FontWeight','bold', 'FontColor', t.color.text, ...
                 'VerticalAlignment','center');
+            app.QGHandles.verdict.Layout.Column = 1;
+            % Phase 3: amber note shown only when the rule-based fallback is
+            % active (trained classifier unavailable). Never present the
+            % fallback as a trained model.
+            app.QGHandles.provNote = uilabel(vbg, 'Text', '', ...
+                'FontName', t.font.family, 'FontSize', t.font.small, ...
+                'FontColor', t.color.warn, 'HorizontalAlignment','right', ...
+                'VerticalAlignment','center', 'WordWrap','on');
+            app.QGHandles.provNote.Layout.Column = 2;
             % dev-only verdict override
             devbox = uigridlayout(vbg, [1 2], 'ColumnWidth', {'fit','fit'}, ...
                 'Padding',[0 0 0 0], 'BackgroundColor', t.color.panelAlt);
+            devbox.Layout.Column = 3;
             app.QGHandles.devLabel = uilabel(devbox, 'Text','DEV verdict:', ...
                 'FontColor', t.color.warn, 'FontSize', t.font.small);
             app.QGHandles.devDrop = uidropdown(devbox, ...
@@ -619,8 +820,8 @@ classdef NETRA_App < handle
             % right: gauge + subscores + advice (row 2, col 2)
             rp = uipanel(g, 'BorderType','none','BackgroundColor', t.color.bg);
             rp.Layout.Row = 2; rp.Layout.Column = 2;
-            rg = uigridlayout(rp, [4 1], ...
-                'RowHeight', {150,'fit','fit','1x'}, ...
+            rg = uigridlayout(rp, [6 1], ...
+                'RowHeight', {150,'fit','fit','fit','1x','fit'}, ...
                 'RowSpacing', t.space.gapLg, 'Padding',[0 0 0 0], ...
                 'BackgroundColor', t.color.bg);
 
@@ -634,10 +835,25 @@ classdef NETRA_App < handle
             sg = uigridlayout(sp.Grid, [4 1], 'RowSpacing', t.space.gap, ...
                 'Padding',[0 0 0 0], 'BackgroundColor', t.color.panel);
             thr = app.Config.thresholds.quality;
-            app.QGHandles.sbFocus = netra.ui.subscoreBar(sg, "Focus", 0, thr.focusMin);
-            app.QGHandles.sbIllum = netra.ui.subscoreBar(sg, "Illumination", 0, thr.illumUniformityMin);
+            % Phase 3: all four subscores are REAL measurements. Each is a 0..1
+            % combined subscore with a threshold tick at 0.5 (the pass line for
+            % a combined subscore; individual feature thresholds are in the
+            % "Show all measurements" panel below). Tooltips document the
+            % combination: Focus = features 1+2, Illumination = 3+4+5,
+            % FOV = feature 6, Contrast = features 7+8.
+            PASS = 0.5;
+            app.QGHandles.sbFocus = netra.ui.subscoreBar(sg, "Focus", 0, PASS);
+            app.QGHandles.sbIllum = netra.ui.subscoreBar(sg, "Illumination", 0, PASS);
             app.QGHandles.sbFov   = netra.ui.subscoreBar(sg, "Field of View", 0, thr.fovCompletenessMin);
-            app.QGHandles.sbCon   = netra.ui.subscoreBar(sg, "Contrast", 0, thr.contrastMin);
+            app.QGHandles.sbCon   = netra.ui.subscoreBar(sg, "Contrast", 0, PASS);
+            app.QGHandles.sbFocus.Label.Tooltip = 'Focus subscore: sharpness from Laplacian variance + Tenengrad gradient (features 1-2), inside FOV.';
+            app.QGHandles.sbIllum.Label.Tooltip = 'Illumination subscore: quadrant uniformity + saturated + dark pixel fractions (features 3-5), inside FOV.';
+            app.QGHandles.sbFov.Label.Tooltip   = 'Field-of-view completeness: mask area vs a full circle (feature 6). Measured in Phase 2.';
+            app.QGHandles.sbCon.Label.Tooltip   = 'Contrast subscore: global std + mean local std of the green channel (features 7-8), inside FOV.';
+            for lb = [app.QGHandles.sbFocus.Label, app.QGHandles.sbIllum.Label, ...
+                      app.QGHandles.sbFov.Label, app.QGHandles.sbCon.Label]
+                lb.FontColor = t.color.text;
+            end
 
             cp = app.titledPanel(rg, 'Preprocessing / Advice');
             cg = uigridlayout(cp.Grid, [2 1], 'RowHeight', {'fit','fit'}, ...
@@ -648,6 +864,32 @@ classdef NETRA_App < handle
             app.QGHandles.advice = uilabel(cg, 'Text','', ...
                 'FontName', t.font.family, 'FontSize', t.font.small, ...
                 'FontColor', t.color.warn, 'WordWrap','on');
+
+            % Phase 3: failReason card - prominent on Ungradeable, a distinct
+            % call-to-action card. Hidden entirely when the image is Good.
+            fp = app.titledPanel(rg, 'Why this image was rejected');
+            app.QGHandles.failCard = fp.Panel;
+            app.QGHandles.failReason = uilabel(fp.Grid, 'Text','', ...
+                'FontName', t.font.family, 'FontSize', t.font.body, ...
+                'FontWeight','bold', 'FontColor', t.color.reject, 'WordWrap','on');
+            app.QGHandles.failCard.Visible = 'off';
+
+            % Phase 3: "Show all measurements" - expandable panel listing all
+            % eight raw feature values and their thresholds. Collapsed by default.
+            mp = app.titledPanel(rg, 'Measurements');
+            mg = uigridlayout(mp.Grid, [2 1], 'RowHeight', {'fit','fit'}, ...
+                'RowSpacing', t.space.gapSm, 'Padding',[0 0 0 0], ...
+                'BackgroundColor', t.color.panel);
+            app.QGHandles.measToggle = uibutton(mg, 'Text','Show all measurements  ▸', ...
+                'FontName', t.font.family, 'FontSize', t.font.small, ...
+                'BackgroundColor', t.color.panelAlt, 'FontColor', t.color.text, ...
+                'HorizontalAlignment','left', ...
+                'ButtonPushedFcn', @(~,~) app.onQGToggleMeasurements());
+            app.QGHandles.measArea = uitextarea(mg, 'Value', {''}, 'Editable','off', ...
+                'FontName', 'monospaced', 'FontSize', t.font.small, ...
+                'BackgroundColor', t.color.panel, 'FontColor', t.color.text);
+            app.QGHandles.measArea.Visible = 'off';
+            app.QGHandles.measExpanded = false;
 
             % action bar (row spanning bottom of right col)
             ap = uipanel(rg, 'BorderType','none','BackgroundColor', t.color.bg);
@@ -660,24 +902,142 @@ classdef NETRA_App < handle
         end
 
         function populateQualityGate(app, cr)
-            t = netra.ui.theme();
             q = cr.quality;
+            thr = app.Config.thresholds.quality;
 
             app.setCanvasBase(app.QGHandles.canvas, cr);
 
             app.QGHandles.gauge.set(q.score);
-            app.QGHandles.sbFocus.set(q.focus, app.Config.thresholds.quality.focusMin);
-            app.QGHandles.sbIllum.set(q.illum, app.Config.thresholds.quality.illumUniformityMin);
-            app.QGHandles.sbFov.set(q.fovCompleteness, app.Config.thresholds.quality.fovCompletenessMin);
-            app.QGHandles.sbCon.set(q.contrast, app.Config.thresholds.quality.contrastMin);
 
-            if isempty(cr.preproc.appliedSteps)
-                app.QGHandles.steps.Text = 'Applied steps: (none)';
+            % Combined subscores (0..1) with a 0.5 pass tick; FOV uses its own
+            % measured completeness against its real threshold. Focus/Contrast
+            % are the combined display values assess already computed; the
+            % Illumination combined subscore is derived from the raw features.
+            [illumSub, feat, thrVec] = app.qgFeatures(cr);
+            app.QGHandles.sbFocus.set(q.focus, 0.5);
+            app.QGHandles.sbIllum.set(illumSub, 0.5);
+            app.QGHandles.sbFov.set(q.fovCompleteness, thr.fovCompletenessMin);
+            app.QGHandles.sbCon.set(q.contrast, 0.5);
+
+            % "Show all measurements": all eight raw features vs their thresholds.
+            app.QGHandles.measArea.Value = app.qgMeasurementLines(feat, thrVec);
+
+            % Adaptive enhancement chip list (Phase 4). Each applied step is a
+            % [bracketed] chip WITH its parameters, so a clean image and a
+            % borderline one produce visibly DIFFERENT chip lists - the proof
+            % the enhancement is adaptive, not a fixed filter chain.
+            app.QGHandles.steps.Text = app.qgStepChips(cr.preproc.appliedSteps);
+
+            % Provenance note: only when the rule-based fallback is active.
+            if cr.provenance.quality == "RULE_BASED_FALLBACK"
+                app.QGHandles.provNote.Text = 'Threshold-based assessment (trained classifier unavailable)';
             else
-                app.QGHandles.steps.Text = "Applied steps: " + strjoin(cr.preproc.appliedSteps, ", ");
+                app.QGHandles.provNote.Text = '';
+            end
+
+            % failReason card: prominent on Ungradeable, hidden otherwise.
+            if q.class == "Ungradeable" && strlength(q.failReason) > 0
+                app.QGHandles.failReason.Text = char(q.failReason);
+                app.QGHandles.failCard.Visible = 'on';
+            else
+                app.QGHandles.failCard.Visible = 'off';
             end
 
             app.applyVerdict(string(q.class), q.recaptureAdvice);
+        end
+
+        function txt = qgStepChips(~, steps)
+            % Render preproc.appliedSteps as a readable [chip] list with
+            % parameters. Maps the terse internal step ids to human labels while
+            % PRESERVING their parameters (clip value, kernel, skipped-reason),
+            % so the adaptive difference between images stays visible.
+            if isempty(steps)
+                txt = 'Applied: (none)'; return;
+            end
+            chips = strings(1, numel(steps));
+            for i = 1:numel(steps)
+                s = char(steps(i));
+                switch true
+                    case strcmp(s,'fovMask'),          chips(i) = "[FOV mask]";
+                    case strcmp(s,'fovMaskFallback'),  chips(i) = "[FOV fallback]";
+                    case strcmp(s,'cropResize'),       chips(i) = "[Circular crop + resize]";
+                    case startsWith(s,'illumNormalize(skipped'), chips(i) = "[Illumination: uniform, skipped]";
+                    case startsWith(s,'illumNormalize'), chips(i) = "[Illumination normalisation " + extractParen(s) + "]";
+                    case startsWith(s,'CLAHE'),        chips(i) = "[CLAHE " + extractParen(s) + "]";
+                    case startsWith(s,'denoise(skipped'), chips(i) = "[Denoise: off]";
+                    case startsWith(s,'denoise'),      chips(i) = "[Denoise: Wiener]";
+                    case startsWith(s,'benGraham'),    chips(i) = "[Model-input normalise]";
+                    case strcmp(s,'enhancementReverted'), chips(i) = "[Enhancement reverted]";
+                    otherwise,                         chips(i) = "[" + string(s) + "]";
+                end
+            end
+            txt = "Applied:  " + strjoin(chips, "  ");
+            function p = extractParen(str)
+                a = strfind(str,'('); b = strfind(str,')');
+                if ~isempty(a) && ~isempty(b) && b(end)>a(1)
+                    p = str(a(1)+1:b(end)-1);
+                else
+                    p = '';
+                end
+            end
+        end
+
+        function [illumSub, feat, thrVec] = qgFeatures(app, cr)
+            % Recompute the eight raw features for the measurements panel and
+            % the combined illumination subscore. The schema is frozen so raw
+            % features are not stored on cr; recomputing is < 300 ms and keeps
+            % the UI a pure function of the image. Safe if pixels are absent.
+            cfg = app.Config;
+            thr = cfg.thresholds.quality;
+            thrVec = [thr.focusLaplacianMin, thr.focusTenengradMin, ...
+                thr.illumUniformityMin, thr.saturatedFractionMax, ...
+                thr.darkFractionMax, thr.fovCompletenessMin, ...
+                thr.contrastStdMin, thr.localContrastMin];
+            if isempty(cr.img.raw)
+                feat = nan(1,8); illumSub = 0; return;
+            end
+            try
+                if ~isempty(cr.img.fovMask) && isequal(size(cr.img.fovMask), size(cr.img.raw(:,:,1)))
+                    mask = cr.img.fovMask;
+                else
+                    [mask,~] = netra.preproc.fovMask(cr.img.raw, cfg);
+                end
+                feat = netra.quality.extractFeatures(cr.img.raw, mask, cfg);
+            catch
+                feat = nan(1,8); illumSub = 0; return;
+            end
+            % Illumination combined subscore = mean of uniformity(up),
+            % (1-saturated)(down), (1-dark)(down) mapped against thresholds.
+            u  = clampUnit(feat(3) / max(thr.illumUniformityMin, eps));
+            sa = clampUnit(1 - feat(4) / max(thr.saturatedFractionMax, eps));
+            da = clampUnit(1 - feat(5) / max(thr.darkFractionMax, eps));
+            illumSub = mean([u sa da]);
+        end
+
+        function lines = qgMeasurementLines(~, feat, thrVec)
+            names = netra.quality.featureNames();
+            dir = {'>=','>=','>=','<=','<=','>=','>=','>='};   % pass direction
+            lines = cell(numel(names)+1, 1);
+            lines{1} = sprintf('%-18s %8s  %s %-6s  %s', ...
+                'FEATURE','VALUE','','THRESH','PASS');
+            for i = 1:numel(names)
+                v = feat(i); th = thrVec(i);
+                if strcmp(dir{i},'>='), pass = v >= th; else, pass = v <= th; end
+                if isnan(v), mark = '  -'; elseif pass, mark = ' OK'; else, mark = 'FAIL'; end
+                lines{i+1} = sprintf('%-18s %8.3f  %s %-6.3f  %s', ...
+                    names{i}, v, dir{i}, th, mark);
+            end
+        end
+
+        function onQGToggleMeasurements(app)
+            app.QGHandles.measExpanded = ~app.QGHandles.measExpanded;
+            if app.QGHandles.measExpanded
+                app.QGHandles.measArea.Visible = 'on';
+                app.QGHandles.measToggle.Text = 'Hide measurements  ▾';
+            else
+                app.QGHandles.measArea.Visible = 'off';
+                app.QGHandles.measToggle.Text = 'Show all measurements  ▸';
+            end
         end
 
         function applyVerdict(app, cls, advice)
@@ -736,14 +1096,21 @@ classdef NETRA_App < handle
         end
 
         function onQGToggleImage(app)
+            % Before/after: swap the QG canvas between the ORIGINAL raw frame
+            % and the ENHANCED output (Phase 4 real pixels). Falls back to the
+            % enhanced/placeholder base when raw is unavailable.
             b = app.QGHandles.btnToggle;
+            cr = app.CurrentCase;
+            if isempty(cr), return; end
             if strcmp(b.Text, 'Show Original')
                 b.Text = 'Show Enhanced';
+                if ~isempty(cr.img.raw)
+                    app.QGHandles.canvas.setBase(cr.img.raw);
+                end
             else
                 b.Text = 'Show Original';
+                app.setCanvasBase(app.QGHandles.canvas, cr);   % enhanced
             end
-            % Phase 1: base image is the same placeholder; toggle is wired,
-            % pixel swap arrives with real preproc output.
         end
     end
 
@@ -861,12 +1228,19 @@ classdef NETRA_App < handle
         function buildWBLesionPanel(app, parent)
             t = netra.ui.theme();
             p = app.titledPanel(parent, 'Lesion Evidence');
-            app.WBHandles.lesionTbl = uitable(p.Grid, ...
+            g = uigridlayout(p.Grid, [2 1], 'RowHeight', {'1x','fit'}, ...
+                'RowSpacing', t.space.gapSm, 'Padding',[0 0 0 0], ...
+                'BackgroundColor', t.color.panel);
+            app.WBHandles.lesionTbl = uitable(g, ...
                 'ColumnName', {'Type','Count','Area %','Quadrants','Near macula'}, ...
                 'FontName', t.font.family, 'FontSize', t.font.small, ...
                 'BackgroundColor', [t.color.panelAlt; t.color.panel], ...
                 'ForegroundColor', t.color.text, 'RowName', {}, ...
                 'CellSelectionCallback', @(src,ev) app.onLesionRow(ev));
+            % Live legend of per-class counts (Phase 6).
+            app.WBHandles.lesionLegend = uilabel(g, 'Text', 'Legend: -', ...
+                'FontName', t.font.family, 'FontSize', t.font.tiny, ...
+                'FontColor', t.color.textMuted, 'WordWrap','on');
         end
 
         function buildWBXaiPanel(app, parent)
@@ -921,8 +1295,16 @@ classdef NETRA_App < handle
                 numOrDash(cr.grade.ruleEstimate), numOrDash(cr.grade.icdr), ...
                 string(cr.grade.disagreement));
 
-            % lesions table
+            % lesions table + hover tooltip + live legend (Phase 6)
             app.WBHandles.lesionTbl.Data = app.lesionTableData(cr);
+            app.WBHandles.lesionTbl.Tooltip = app.lesionTooltip(cr);
+            if app.hasRealStructures(cr)
+                app.updateLesionLegend(cr);
+            elseif isfield(app.WBHandles,'lesionLegend') && ...
+                    ~isempty(app.WBHandles.lesionLegend) && ...
+                    isvalid(app.WBHandles.lesionLegend)
+                app.WBHandles.lesionLegend.Text = 'Legend: (mock case)';
+            end
 
             % xai
             app.WBHandles.alaLabel.Text = sprintf('ALA: %.2f', nz(cr.xai.agreementScore));
@@ -958,6 +1340,47 @@ classdef NETRA_App < handle
             end
         end
 
+        function tip = lesionTooltip(app, cr)
+            % Per-lesion hover detail: type, area (px), quadrant, distance from
+            % fovea in disc diameters. Lists up to the 8 largest lesions across
+            % MA/HE/EX (real detections only). Empty -> a "no lesions" note.
+            if ~app.hasRealStructures(cr)
+                tip = 'Lesion detail available for analysed (real) cases.';
+                return;
+            end
+            S = cr.structures;
+            fov = S.foveaCenter; dd = 2*max(S.odRadius, 1);   % disc diameter px
+            qnames = {'S-N','S-T','I-N','I-T'};
+            rows = {};   % {area, text}
+            types = {'MA','HE','EX'};
+            for ti = 1:numel(types)
+                L = cr.lesions.(types{ti});
+                for j = 1:size(L.centroids,1)
+                    c = L.centroids(j,:);
+                    a = L.areas(j);
+                    q = 0;
+                    if ~isempty(S.quadrantMap)
+                        cy = min(size(S.quadrantMap,1), max(1, round(c(2))));
+                        cx = min(size(S.quadrantMap,2), max(1, round(c(1))));
+                        q = double(S.quadrantMap(cy, cx));
+                    end
+                    qn = '-'; if q>=1 && q<=4, qn = qnames{q}; end
+                    distDD = hypot(c(1)-fov(1), c(2)-fov(2)) / dd;
+                    txt = sprintf('%s  area %d px  quad %s  %.1f DD from fovea', ...
+                        types{ti}, round(a), qn, distDD);
+                    rows(end+1,:) = {a, txt}; %#ok<AGROW>
+                end
+            end
+            if isempty(rows)
+                tip = 'No lesions detected (normal retina).';
+                return;
+            end
+            [~, ord] = sort(cell2mat(rows(:,1)), 'descend');
+            take = ord(1:min(8, numel(ord)));
+            lines = rows(take, 2);
+            tip = strjoin(["Largest lesions (hover):"; string(lines)], newline);
+        end
+
         function onOverlayToggle(app, key, val)
             app.wrap(@() localToggle());
             function localToggle()
@@ -970,9 +1393,15 @@ classdef NETRA_App < handle
                             app.WBHandles.canvas.setLayerVisible(fn{i}, false);
                         end
                     end
+                    app.WBHandles.canvas.setLayerVisible('Fovea', false);
                     return;
                 end
                 app.WBHandles.canvas.setLayerVisible(key, val);
+                % The OD ring and fovea crosshair are separate layers driven by
+                % one 'Disc & Fovea' checkbox (Phase 5 real overlays).
+                if strcmp(key,'ODFovea')
+                    app.WBHandles.canvas.setLayerVisible('Fovea', val);
+                end
             end
         end
 
@@ -987,10 +1416,17 @@ classdef NETRA_App < handle
                 keys = {'MA','HE','EX','CWS'};
                 row = ev.Indices(1);
                 if row < 1 || row > 4, return; end
-                % Solo that lesion class: dim other overlays. Phase 1 has a
-                % single combined 'Lesions' layer, so solo it against others.
-                app.WBHandles.canvas.soloLesion('Lesions');
-                app.noteToast(sprintf('Focused lesion class: %s', keys{row}));
+                % Solo that lesion class: dim every overlay except this class's
+                % real per-class layer (Phase 6). Falls back to the combined
+                % 'Lesions' layer for mock cases that have no per-class layers.
+                cls = keys{row};
+                if app.hasRealStructures(app.CurrentCase)
+                    app.WBHandles.canvas.setLayerVisible(['Lesion_' cls], true);
+                    app.WBHandles.canvas.soloLesion(['Lesion_' cls]);
+                else
+                    app.WBHandles.canvas.soloLesion('Lesions');
+                end
+                app.noteToast(sprintf('Focused lesion class: %s', cls));
             end
         end
     end
@@ -1492,6 +1928,85 @@ classdef NETRA_App < handle
             end
         end
 
+        function onBatchImport(app)
+            app.wrap(@() localBatch());
+            function localBatch()
+                folder = uigetdir('', 'Select a folder of fundus images');
+                if isequal(folder, 0), return; end
+
+                % Shared metadata dialog: phcID + eye handling.
+                phcOpts = app.phcItems();
+                defPhc = phcOpts{1};
+                eyeMode = uiconfirm(app.Fig, ...
+                    sprintf(['Batch import from:\n%s\n\nEye handling for this ' ...
+                    'batch? (PHC: %s)'], folder, app.phcIdFromLabel(defPhc)), ...
+                    'Batch metadata', ...
+                    'Options', {'All OD','All OS','Alternate OD/OS','Cancel'}, ...
+                    'DefaultOption', 1, 'CancelOption', 4);
+                if strcmp(eyeMode, 'Cancel'), return; end
+                switch eyeMode
+                    case 'All OD', eyeVal = "OD";
+                    case 'All OS', eyeVal = "OS";
+                    otherwise,     eyeVal = "alternate";
+                end
+
+                meta = struct('phcID', app.phcIdFromLabel(defPhc), 'eye', eyeVal);
+
+                dlg = uiprogressdlg(app.Fig, 'Title','Batch ingest', ...
+                    'Message','Starting...', 'Cancelable','off', 'Value', 0);
+                cleanup = onCleanup(@() delete(dlg)); %#ok<NASGU>
+                prog = @(i,n,f) app.batchProgress(dlg, i, n, f);
+
+                results = netra.io.batchIngest(char(folder), meta, app.Config, prog);
+
+                app.refreshDashboard();
+                app.showBatchResults(results);
+            end
+        end
+
+        function batchProgress(~, dlg, i, n, fname)
+            if isvalid(dlg)
+                dlg.Value = max(0, min(1, (i-1)/max(1,n)));
+                dlg.Message = sprintf('(%d/%d)  %s', i, n, fname);
+            end
+        end
+
+        function showBatchResults(app, results)
+            t = netra.ui.theme();
+            nIng = sum(results.status == "ingested");
+            nRej = sum(results.status == "rejected");
+            nErr = sum(results.status == "error");
+
+            d = uifigure('Name','Batch Import Results', 'Color', t.color.bg, ...
+                'Position', [200 200 720 460]);
+            gg = uigridlayout(d, [3 1], 'RowHeight', {'fit','1x','fit'}, ...
+                'Padding', t.space.pad*[1 1 1 1], 'BackgroundColor', t.color.bg);
+            uilabel(gg, 'Text', sprintf(...
+                'Ingested: %d    Rejected: %d    Errors: %d    (total %d)', ...
+                nIng, nRej, nErr, height(results)), ...
+                'FontName', t.font.family, 'FontSize', t.font.h3, ...
+                'FontWeight','bold', 'FontColor', t.color.text);
+            tbl = uitable(gg, ...
+                'ColumnName', {'File','Status','UID','Reason','Secs'}, ...
+                'FontName', t.font.family, 'FontSize', t.font.small, ...
+                'BackgroundColor', [t.color.panelAlt; t.color.panel], ...
+                'ForegroundColor', t.color.text, 'RowName', {});
+            tbl.Data = [cellstr(results.file), cellstr(results.status), ...
+                cellstr(results.uid), cellstr(results.reason), ...
+                cellstr(compose('%.2f', results.elapsedSeconds))];
+            brow = uigridlayout(gg, [1 2], 'Padding',[0 0 0 0], ...
+                'ColumnSpacing', t.space.gapSm, 'BackgroundColor', t.color.bg);
+            app.mkButton(brow, 'Export CSV', @() localExportCsv(), t.color.info);
+            app.mkButton(brow, 'Close', @() delete(d), t.color.panelAlt);
+
+            function localExportCsv()
+                [f, p] = uiputfile('*.csv', 'Save batch results', 'batch_results.csv');
+                if isequal(f,0), return; end
+                writetable(results, fullfile(p,f));
+                uialert(d, sprintf('Saved to %s', fullfile(p,f)), 'Exported', 'Icon','success');
+            end
+        end
+
         function loadMockCaseIntoWorkbench(app, row, readOnly)
             cr = app.mockCaseFromRow(row);
             app.CurrentCase = cr;
@@ -1513,10 +2028,18 @@ classdef NETRA_App < handle
         end
 
         function setCanvasBase(app, canvas, cr)
-            % Phase 1 has no real pixels: synthesize a fundus-like base from
-            % the demo image if loadable, else a neutral gradient. Honest
-            % placeholder, clearly not a measurement.
-            base = app.placeholderFundus(cr);
+            % Prefer REAL pixels (Phase 2 ingest): displayRGB/enhanced are the
+            % cropped, FOV-masked frame. Fall back to the synthetic placeholder
+            % only for mock-registry cases that never loaded an image.
+            if ~isempty(cr.img.displayRGB)
+                base = cr.img.displayRGB;
+            elseif ~isempty(cr.img.enhanced)
+                base = cr.img.enhanced;
+            elseif ~isempty(cr.img.raw)
+                base = cr.img.raw;
+            else
+                base = app.placeholderFundus(cr);   % honest synthetic placeholder
+            end
             canvas.setBase(base);
         end
 
@@ -1533,8 +2056,15 @@ classdef NETRA_App < handle
         end
 
         function addSyntheticOverlays(app, canvas, cr)
-            % Build placeholder masks from mock geometry so overlay toggles
-            % show visible layers in Phase 1 (real masks arrive in Phases 5-8).
+            % Phase 5/6: if the structures/lesions stages ran for real, build
+            % overlays from the ACTUAL masks. Otherwise (mock registry preview)
+            % fall back to the synthetic placeholders below so the demo cases
+            % still show something. Real masks: vessels, OD+fovea, quadrant grid,
+            % per-class lesions; Grad-CAM stays Track B's (synthetic here).
+            if app.hasRealStructures(cr)
+                app.addRealOverlays(canvas, cr);
+                return;
+            end
             t = netra.ui.theme();
             n = 256;
             [X,Y] = meshgrid(1:n, 1:n);
@@ -1580,6 +2110,106 @@ classdef NETRA_App < handle
             canvas.addLayer('Lesions',  les,    t.color.lesion);
             canvas.addLayer('GradCAM',  gcMask, t.color.gradcam);
             canvas.setOpacity('GradCAM', 0.6);
+        end
+
+        function tf = hasRealStructures(~, cr)
+            % True when the structures stage produced a real vessel mask.
+            tf = isfield(cr,'provenance') && isfield(cr.provenance,'structures') ...
+                && cr.provenance.structures == "REAL" ...
+                && ~isempty(cr.structures.vesselMask);
+        end
+
+        function addRealOverlays(app, canvas, cr)
+            % Build canvas overlays from the REAL structure/lesion masks. All
+            % masks are the enhanced-frame size; the canvas resizes to its base.
+            t = netra.ui.theme();
+            S = cr.structures;
+            [H, W, ~] = size(cr.img.displayRGB);
+            if H == 0, [H, W, ~] = size(cr.img.enhanced); end
+
+            % Vessels: cyan skeleton (thin the mask so it reads as a skeleton).
+            vessel = S.vesselMask;
+            if ~isequal(size(vessel),[H W]), vessel = false(H,W); end
+            skel = bwmorph(vessel, 'thin', Inf);
+            skel = imdilate(skel, strel('disk',1));       % 1px visibility bump
+            canvas.addLayer('Vessels', skel, t.color.vessel);
+
+            % OD (green circle) + fovea (magenta crosshair).
+            odFov = app.odFoveaOverlay(S.odCenter, S.odRadius, S.foveaCenter, H, W);
+            canvas.addLayer('ODFovea', odFov, t.color.pass);   % green circle
+            fovX = app.crosshairMask(S.foveaCenter, H, W);
+            canvas.addLayer('Fovea', fovX, t.color.fovea);     % magenta crosshair
+
+            % Quadrant grid: boundaries between quadrant codes = thin dividers.
+            quad = app.quadrantGridMask(S.quadrantMap, H, W);
+            canvas.addLayer('Quadrants', quad, [1 1 1]);       % thin white dividers
+
+            % Lesions: per-class masks (MA red, HE dark red, EX yellow) + a
+            % combined 'Lesions' layer the existing checkbox drives.
+            lay = netra.ui.lesionOverlay(cr, [H W]);
+            union = false(H, W);
+            app.WBHandles.lesionCounts = struct();
+            for k = 1:numel(lay)
+                canvas.addLayer(lay(k).name, lay(k).mask, lay(k).color);
+                union = union | lay(k).mask;
+                cls = erase(lay(k).name, 'Lesion_');
+                app.WBHandles.lesionCounts.(cls) = lay(k).count;
+            end
+            canvas.addLayer('Lesions', union, t.color.lesion);
+
+            % Grad-CAM is Track B's; if absent, add an empty layer so the toggle
+            % exists but shows nothing (never fabricate an attention map).
+            gc = false(H, W);
+            if isfield(cr,'xai') && ~isempty(cr.xai.gradcam) ...
+                    && isequal(size(cr.xai.gradcam),[H W])
+                gc = cr.xai.gradcam > 0.35;
+            end
+            canvas.addLayer('GradCAM', gc, t.color.gradcam);
+            canvas.setOpacity('GradCAM', 0.6);
+
+            % Live legend counts under the lesion table.
+            app.updateLesionLegend(cr);
+        end
+
+        function m = odFoveaOverlay(~, odC, odR, ~, H, W)
+            % Green ring at the optic disc (annulus, ~3px thick).
+            m = false(H, W);
+            if any(~isfinite(odC)) || ~isfinite(odR) || odR <= 0, return; end
+            [X, Y] = meshgrid(1:W, 1:H);
+            d2 = (X-odC(1)).^2 + (Y-odC(2)).^2;
+            m = d2 <= (odR+1.5)^2 & d2 >= (odR-1.5)^2;
+        end
+
+        function m = crosshairMask(~, ctr, H, W)
+            % Small magenta plus at the fovea centre.
+            m = false(H, W);
+            if any(~isfinite(ctr)), return; end
+            cx = min(W,max(1,round(ctr(1)))); cy = min(H,max(1,round(ctr(2))));
+            r = max(4, round(0.02*min(H,W)));
+            xs = max(1,cx-r):min(W,cx+r); ys = max(1,cy-r):min(H,cy+r);
+            m(cy, xs) = true; m(ys, cx) = true;
+            m = imdilate(m, strel('disk',1));
+        end
+
+        function m = quadrantGridMask(~, qmap, H, W)
+            % Divider = pixels where the quadrant code changes (thin boundaries).
+            m = false(H, W);
+            if ~isequal(size(qmap),[H W]) || ~any(qmap(:)), return; end
+            gmag = imgradient(double(qmap));
+            m = (gmag > 0) & (qmap > 0);
+            m = imdilate(m, strel('disk',0));
+        end
+
+        function updateLesionLegend(app, cr)
+            % Live per-class counts shown on the lesion panel title/legend.
+            if ~isfield(app.WBHandles,'lesionLegend') || ...
+                    isempty(app.WBHandles.lesionLegend) || ...
+                    ~isvalid(app.WBHandles.lesionLegend)
+                return;
+            end
+            app.WBHandles.lesionLegend.Text = sprintf( ...
+                'Legend:  MA %d (red)   HE %d (dark red)   EX %d (yellow)', ...
+                cr.lesions.MA.count, cr.lesions.HE.count, cr.lesions.EX.count);
         end
 
         % ---- small UI factory helpers ----
@@ -1698,6 +2328,9 @@ end
 % ======================= file-local helpers =============================
 function v = nz(x)
     if isempty(x) || ~isfinite(x), v = 0; else, v = x; end
+end
+function y = clampUnit(x)
+    if ~isfinite(x), y = 0; else, y = min(1, max(0, x)); end
 end
 function s = numOrDash(x)
     if isempty(x) || ~isfinite(x), s = "-"; else, s = string(x); end

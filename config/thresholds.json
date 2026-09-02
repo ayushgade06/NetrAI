@@ -1,24 +1,64 @@
 {
-  "_comment": "NETRA thresholds. Placeholder values for Phase 0. Every threshold used anywhere in the project lives here; never inline a number in code.",
+  "_comment": "NETRA thresholds. Every threshold used anywhere in the project lives here; never inline a number in code. Phase 2 added io.*, preproc.fov*, and degradation.*.",
   "quality": {
+    "_comment": "Phase 3. focusMin/contrastMin retained for the Phase 1 UI wiring; the eight *Min/*Max keys below are the per-feature gates. PLACEHOLDER values are engineering estimates on the 0..1 green-channel scale, NOT trained thresholds - retrain via training/train_quality.m and tune these against validation/results_quality.mat once APTOS is on disk.",
     "focusMin": 0.35,
     "illumUniformityMin": 0.4,
     "fovCompletenessMin": 0.85,
     "contrastMin": 0.3,
     "gradeableScoreMin": 60,
-    "borderlineScoreMin": 40
+    "borderlineScoreMin": 40,
+    "featureWeights": [0.22, 0.18, 0.12, 0.10, 0.12, 0.12, 0.07, 0.07],
+    "focusLaplacianMin": 0.06,
+    "focusTenengradMin": 0.02,
+    "saturatedFractionMax": 0.15,
+    "darkFractionMax": 0.35,
+    "contrastStdMin": 0.06,
+    "localContrastMin": 0.03,
+    "hardRejectFovCompleteness": 0.5,
+    "useClassifier": true
+  },
+  "io": {
+    "minDimension": 200,
+    "maxAspectRatio": 2.0,
+    "fundusPlausibilityMin": 0.5,
+    "supportedFormats": [".jpg", ".jpeg", ".png", ".tif", ".tiff"]
   },
   "preproc": {
+    "_comment": "Track A (Phase 4). illumKernelFraction/benGrahamSigmaFraction are expressed as a fraction of the FOV radius so they are resolution-aware. uniformityTrigger/denoiseTrigger/contrastTarget are on the 0..1 green scale, matching quality.* subscores. claheClipMin/Max bound the CONTRAST-DERIVED clip limit; claheClipDefault/claheClipMax above are retained for the Phase 1-3 UI wiring.",
     "claheClipDefault": 0.01,
     "claheClipMax": 0.05,
-    "targetSize": 512
+    "targetSize": 512,
+    "fovThresholdMethod": "otsu",
+    "fovFixedThreshold": 20,
+    "fovMinAreaFraction": 0.15,
+    "illumKernelFraction": 0.5,
+    "uniformityTrigger": 0.7,
+    "claheClipMin": 0.004,
+    "contrastTarget": 0.18,
+    "denoiseTrigger": 0.9,
+    "benGrahamSigmaFraction": 0.05
+  },
+  "degradation": {
+    "blurSigmaRange": [0.5, 6.0],
+    "gammaRange": [0.35, 3.0],
+    "hazeAlphaRange": [0.05, 0.6],
+    "occlusionFractionRange": [0.1, 0.6]
   },
   "lesions": {
+    "_comment": "Track A (Phase 6). Area thresholds (maAreaMax/heAreaMin/exMinArea) are in px^2 AT THE 512px target size and are rescaled at runtime by (odRadius/referenceOdRadius512)^2 so they track disc scale, not raw pixels. referenceOdRadius512 is the nominal disc radius at 512px. seLength is the vessel-suppression structuring-element length (px at 512, also disc-scaled). PLACEHOLDER values are engineering estimates, NOT tuned on IDRiD (absent on disk) - tune via validation/eval_lesions.m.",
     "maAreaMax": 120,
     "maEccentricityMax": 0.85,
     "maCircularityMin": 0.6,
     "exMinArea": 15,
-    "odDilationPx": 20
+    "odDilationPx": 20,
+    "seLength": 15,
+    "seOrientations": 12,
+    "redThresholdFactor": 3.0,
+    "heAreaMin": 120,
+    "exSharpnessMin": 0.02,
+    "maculaRadiusDiscDiameters": 1.0,
+    "referenceOdRadius512": 50
   },
   "grading": {
     "referableThreshold": 0.5,
@@ -31,6 +71,15 @@
     "alaLowThreshold": 0.4
   },
   "structures": {
-    "discDiameterRatioFovea": 2.5
+    "_comment": "Track A (Phase 5). frangiScales are vessel radii in px at the 512px target (multi-scale). vesselThreshold is on the normalised 0..1 vesselness response. minVesselLength/odRadiusRange/foveaSearchWindow are px at 512 (disc-scaled where noted in code). odSearchTopPercent = brightest fraction of inpainted image searched for the OD. foveaDiscDiameters = temporal offset of the fovea from the OD in disc DIAMETERS. odFallbackRadiusFraction = OD radius as a fraction of FOV radius when localisation fails.",
+    "discDiameterRatioFovea": 2.5,
+    "frangiScales": [2, 3, 4, 6, 8],
+    "vesselThreshold": 0.12,
+    "minVesselLength": 12,
+    "odSearchTopPercent": 5,
+    "odRadiusRange": [30, 70],
+    "foveaDiscDiameters": 2.2,
+    "foveaSearchWindow": 90,
+    "odFallbackRadiusFraction": 0.18
   }
 }

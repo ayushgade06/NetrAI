@@ -55,13 +55,16 @@ function startup_netra()
              'only base MATLAB, but later phases will require them.']);
     end
 
-    % --- mock registry hint (Phase 1) ------------------------------------
-    seed = fullfile(root, 'data', 'mock', 'registry_seed.mat');
-    if ~isfile(seed)
-        fprintf(['  mock data    : NOT FOUND. Run  seedMockRegistry  to ', ...
-                 'populate the dashboard and review queue.\n']);
+    % --- registry hint (Phase 1 mock seed + Phase 2 real registry) -------
+    seed    = fullfile(root, 'data', 'mock', 'registry_seed.mat');
+    realReg = fullfile(root, 'data', 'registry.mat');
+    if isfile(realReg)
+        fprintf('  case store   : real registry.mat present (ingested cases)\n');
+    elseif isfile(seed)
+        fprintf('  case store   : no real cases yet; mock seed present (demo dashboard)\n');
     else
-        fprintf('  mock data    : registry_seed.mat present\n');
+        fprintf(['  case store   : empty. Run  seedMockRegistry  for a demo ', ...
+                 'dashboard, or ingest images via the app / batchIngest.\n']);
     end
 
     fprintf('\nNETRA ready.  Launch the UI with:  app = NETRA_App;\n');

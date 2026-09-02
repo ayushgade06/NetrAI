@@ -39,9 +39,10 @@ function t = theme()
     color.info        = [0.35 0.55 0.85];   % neutral informational accent
 
     % banner backgrounds (semantic, slightly darkened for text contrast)
-    color.bannerPassBg   = [0.16 0.30 0.20];
-    color.bannerWarnBg   = [0.34 0.27 0.10];
-    color.bannerRejectBg = [0.34 0.14 0.14];
+    color.bannerPassBg    = [0.16 0.30 0.20];
+    color.bannerWarnBg    = [0.34 0.27 0.10];   % MOCK: full placeholder
+    color.bannerPartialBg = [0.30 0.24 0.08];   % PARTIAL: real+mock mix (deeper amber)
+    color.bannerRejectBg  = [0.34 0.14 0.14];
 
     % grade scale (ICDR 0..4) - green->red ramp, semantic
     color.grade0 = [0.30 0.72 0.42];

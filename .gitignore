@@ -2,6 +2,32 @@
 
 # Runtime case output (never committed)
 data/cases/
+# Runtime real registry, dataset manifest, and quarantine (Phase 2)
+data/registry.mat
+data/registry.mat.bak
+data/dataset_manifest.mat
+data/quarantine/
+# Frozen dataset splits are a local artefact of your dataset copy
+validation/splits.mat
+# Datasets are never committed (large, licensed)
+datasets/
+# Phase 3: trained quality model + training set + validation metrics are
+# regenerated locally, never committed. Regenerate (needs APTOS on disk):
+#   startup_netra
+#   make_degradations   % training/quality_trainset.mat  (features, not images)
+#   train_quality       % models/quality_clf.mat
+#   eval_quality        % validation/results_quality.mat  (REAL metrics)
+models/quality_clf.mat
+training/quality_trainset.mat
+validation/results_quality.mat
+# Track A (Phase 4-6): structure/lesion validation metrics + contact sheet are
+# regenerated locally from real data (DRIVE/IDRiD), never committed:
+#   eval_structures     % validation/results_structures.mat
+#   eval_lesions        % validation/results_idrid.mat
+#   lesion_contact_sheet% docs/figures/lesion_overlays.png
+validation/results_structures.mat
+validation/results_idrid.mat
+docs/figures/
 # Runtime CSV exports from the dashboard
 data/exports/
 # Note: data/mock/registry_seed.mat IS committed so the demo dashboard/queue

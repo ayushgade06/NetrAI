@@ -24,8 +24,15 @@ function models = loadModels(modelsDir)
 
     for k = 1:numel(matFiles)
         f = fullfile(matFiles(k).folder, matFiles(k).name);
-        data = load(f);                    %#ok<NASGU> % must load without error
+        data = load(f);                    % must load without error
         models.files(end+1) = string(matFiles(k).name); %#ok<AGROW>
+
+        % Phase 3: surface the trained quality classifier so
+        % netra.quality.assess can take the trained path. quality_clf.mat stores
+        % the model under variable `qmodel` (see training/train_quality.m).
+        if strcmpi(matFiles(k).name, 'quality_clf.mat') && isfield(data, 'qmodel')
+            models.quality = data.qmodel;
+        end
     end
 end
 

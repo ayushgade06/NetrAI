@@ -33,7 +33,7 @@ classdef tPipeline < matlab.unittest.TestCase
             stages = netra.util.stageNames();
             for k = 1:numel(stages)
                 val = cr.provenance.(stages{k});
-                tc.verifyTrue(any(strcmp(val, ["REAL","MOCK","FAILED"])), ...
+                tc.verifyTrue(any(strcmp(val, ["REAL","MOCK","PARTIAL","FAILED"])), ...
                     sprintf('Stage %s has no provenance (%s).', stages{k}, val));
             end
             tc.verifyEqual(cr.provenance.routing, "REAL");

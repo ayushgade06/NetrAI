@@ -56,7 +56,7 @@ function fn = stageHandle(stage)
 %   get a caseRecord back.
     switch stage
         case 'quality'
-            fn = @(cr,cfg,~)      netra.quality.assess(cr, cfg);
+            fn = @(cr,cfg,models) netra.quality.assess(cr, cfg, models);
         case 'preproc'
             fn = @(cr,cfg,~)      netra.preproc.enhance(cr, cfg);
         case 'structures'
@@ -89,6 +89,15 @@ end
 
 function cr = stageStore(cr, cfg)
 %STAGESTORE  Adapt store.save (returns nothing) to the cr-in/cr-out form.
+%   Persistence is REAL in Phase 2, but only for cases that carry real pixels
+%   (cr.img.raw non-empty). Mock dashboard previews (built from registry rows
+%   with no image loaded) must NOT pollute the real registry, so they skip the
+%   write and are tagged MOCK. Ingested cases (UI New Screening / batchIngest)
+%   have pixels, get persisted, and are tagged REAL.
+    if isempty(cr.img.raw)
+        cr.provenance.store = "MOCK";        % nothing to persist (preview only)
+        return;
+    end
     netra.store.save(cr, cfg);
-    cr.provenance.store = "MOCK";
+    cr.provenance.store = "REAL";
 end

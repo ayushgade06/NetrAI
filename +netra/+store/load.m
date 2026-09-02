@@ -1,27 +1,32 @@
 function cr = load(uid, cfg)
-%LOAD  Load a caseRecord from the case store by uid.  [Phase 10]
-%   cr = netra.store.load(uid, cfg) reads back a previously saved case.
+%LOAD  Load a caseRecord from the on-disk case store by uid.  [Phase 2 - REAL]
+%   cr = netra.store.load(uid, cfg) reads data/cases/<uid>/case.mat and returns
+%   the stored caseRecord.
 %
 %   CONTRACT:
-%     - Returns exactly one caseRecord.
-%     - Only +store and +report may touch disk. Phase 0 reads NOTHING.
+%     - Returns exactly one caseRecord. Only +store/+report touch disk.
 %
-%   MOCK IMPLEMENTATION - PHASE 0 SCAFFOLD
-%   Returns a fresh placeholder caseRecord tagged with the requested uid.
-%   Persists/reads nothing. These are NOT measurements and NOT model outputs.
-%   Replaced with a real implementation in Phase 10.
+%   Errors:
+%     NETRA:store:notFound  no case folder / case.mat for that uid.
+%     NETRA:store:corrupt   case.mat exists but has no 'cr' variable.
 
     arguments
         uid (1,:) char
-        cfg (1,1) struct %#ok<INUSA>
+        cfg (1,1) struct = struct() %#ok<INUSA>
     end
 
-    % Phase 0: no store on disk yet, so return a fresh record carrying the
-    % requested uid. Uses the demo image so the schema is valid.
-    here = fileparts(mfilename('fullpath'));           % +store
-    root = fileparts(fileparts(here));                 % project root
-    demo = fullfile(root, 'data', 'demo', 'sample01.jpg');
-    cr = netra.newCaseRecord(demo);
-    cr.meta.uid = string(uid);
-    cr.provenance.store = "MOCK";
+    root = netra.store.storeRoot();            % overridable via NETRA_STORE_ROOT
+    caseFile = fullfile(root, 'data', 'cases', uid, 'case.mat');
+
+    if ~isfile(caseFile)
+        error('NETRA:store:notFound', ...
+            'No stored case for uid "%s" (looked for %s).', uid, caseFile);
+    end
+
+    S = builtin('load', caseFile, 'cr');
+    if ~isfield(S, 'cr') || ~isstruct(S.cr)
+        error('NETRA:store:corrupt', ...
+            'case.mat for uid "%s" does not contain a caseRecord.', uid);
+    end
+    cr = S.cr;
 end

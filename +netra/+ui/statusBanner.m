@@ -50,17 +50,33 @@ function localUpdate(panel, grid, lbl, prov)
         vals(k) = string(prov.(stages{k}));
     end
 
-    failed = string(stages(vals == "FAILED"));
-    mock   = string(stages(vals == "MOCK"));
+    failed  = string(stages(vals == "FAILED"));
+    mock    = string(stages(vals == "MOCK"));
+    partial = string(stages(vals == "PARTIAL"));
 
     if ~isempty(failed)
         bg  = t.color.bannerRejectBg;
         txt = sprintf('PIPELINE FAILURE: %s stage(s) failed - results are invalid.', ...
             strjoin(failed, ', '));
-    elseif ~isempty(mock)
-        bg  = t.color.bannerWarnBg;
-        txt = sprintf('MOCK COMPONENTS ACTIVE: %s - outputs are placeholders, not measurements.', ...
-            strjoin(mock, ', '));
+    elseif ~isempty(mock) || ~isempty(partial)
+        % PARTIAL = real for its measured outputs but some sub-steps still
+        % mocked (e.g. preproc: FOV/crop real, enhancement mock). MOCK = the
+        % whole stage is a placeholder. Distinguish them in the wording so no
+        % one reads a partially-real stage as fully validated OR as pure mock.
+        parts = strings(1,0);
+        if ~isempty(partial)
+            parts(end+1) = sprintf('PARTIAL (real+mock): %s', strjoin(partial, ', '));
+        end
+        if ~isempty(mock)
+            parts(end+1) = sprintf('MOCK (placeholder): %s', strjoin(mock, ', '));
+        end
+        if isempty(mock)
+            bg = t.color.bannerPartialBg;   % only partial stages -> deeper amber
+        else
+            bg = t.color.bannerWarnBg;      % any full mock present -> mock amber
+        end
+        txt = ['STAGE PROVENANCE - ' char(strjoin(parts, '  |  ')) ...
+               ' - only fully-validated stages carry measurements.'];
     else
         % all REAL (or all blank -> treat blanks as not-yet-run REAL-shaped)
         bg  = t.color.bannerPassBg;

@@ -1,0 +1,16 @@
+# NETRA - naturally poor-quality APTOS images (investigator-selected).
+#
+# One image path per line (relative to the repo root or absolute). Lines
+# starting with '#' and blank lines are ignored by training/eval_quality.m.
+#
+# PURPOSE: a ONE-CLASS check. These images have NO official quality labels, so
+# eval_quality reports only the fraction the classifier REJECTS (class != Good),
+# never a false-positive rate against invented labels.
+#
+# SELECTION BIAS: this list is hand-selected by the investigator and is
+# therefore subject to selection bias. State this whenever the rejection rate
+# is reported. See docs/quality_method.md.
+#
+# This file ships EMPTY (only these comments). Populate it with ~100 paths after
+# placing APTOS under datasets/ and running tools/freezeSplits. Example:
+#   datasets/aptos2019/train_images/000c1434d8d7.png

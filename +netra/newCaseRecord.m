@@ -29,28 +29,44 @@ function cr = newCaseRecord(imagePath, metaStruct)
             'Image not found: %s', imagePath);
     end
 
-    % Phase 0 does not decode pixels (see section 13). We only confirm the
-    % file is readable as an image so the contract holds, then discard it.
+    % Phase 2: decode the pixels so meta.imageHash is a REAL content hash and
+    % (when a PHC id is supplied) meta.uid is the deterministic ingest id. We
+    % do NOT store the pixels in cr.img.raw here - that stays empty and is the
+    % ingest path's job (loadImage -> cr.img.raw -> re-run pipeline), keeping
+    % the schema-factory contract intact. Confirm readability either way.
     try
-        info = imfinfo(imagePath); %#ok<NASGU>
+        px = imread(imagePath);
     catch ME
         error('NETRA:io:unreadable', ...
             'Cannot read image "%s": %s', imagePath, ME.message);
+    end
+    imageHash = netra.io.hashImage(px);
+
+    eyeVal    = string(metaGet(metaStruct, 'eye', "OD"));
+    phcVal    = string(metaGet(metaStruct, 'phcID', ""));
+    tsVal     = datetime('now');
+    % Deterministic uid when we have a PHC id; otherwise keep the Phase 0
+    % timestamp+random id so mock-case paths and legacy callers still work.
+    if strlength(phcVal) > 0
+        seq = metaGet(metaStruct, 'seq', 0);
+        uidVal = netra.io.generateUID(phcVal, tsVal, eyeVal, seq);
+    else
+        uidVal = localUid();
     end
 
     cr = struct();
 
     % --- meta ------------------------------------------------------------
     cr.meta = struct( ...
-        'uid',        localUid(), ...
+        'uid',        uidVal, ...
         'patientID',  metaGet(metaStruct, 'patientID', ""), ...
-        'phcID',      metaGet(metaStruct, 'phcID',     ""), ...
+        'phcID',      phcVal, ...
         'age',        metaGet(metaStruct, 'age',       NaN), ...
         'dmYears',    metaGet(metaStruct, 'dmYears',   NaN), ...
-        'eye',        metaGet(metaStruct, 'eye',       "OD"), ...
-        'timestamp',  datetime('now'), ...
+        'eye',        eyeVal, ...
+        'timestamp',  tsVal, ...
         'imagePath',  string(imagePath), ...
-        'imageHash',  "");
+        'imageHash',  string(imageHash));
 
     % --- img -------------------------------------------------------------
     cr.img = struct( ...
