@@ -33,7 +33,10 @@ classdef tPipeline < matlab.unittest.TestCase
             stages = netra.util.stageNames();
             for k = 1:numel(stages)
                 val = cr.provenance.(stages{k});
-                tc.verifyTrue(any(strcmp(val, ["REAL","MOCK","PARTIAL","FAILED"])), ...
+                % Track B adds two mandated fallback tokens for the no-CNN path.
+                allowed = ["REAL","MOCK","PARTIAL","FAILED", ...
+                           "RULE_BASED_NO_CNN","UNAVAILABLE_NO_CNN"];
+                tc.verifyTrue(any(strcmp(val, allowed)), ...
                     sprintf('Stage %s has no provenance (%s).', stages{k}, val));
             end
             tc.verifyEqual(cr.provenance.routing, "REAL");

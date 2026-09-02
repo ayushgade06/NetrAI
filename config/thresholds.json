@@ -61,14 +61,24 @@
     "referenceOdRadius512": 50
   },
   "grading": {
+    "_comment": "Track B (Phase 7). referableThreshold/temperature are UNTUNED PLACEHOLDERS - no CNN was trained (no APTOS on disk, no MATLAB/GPU here), so the system runs Fallback Path C: rule-based grading via icdrRule, provenance RULE_BASED_NO_CNN. When path A/B is enabled, retune referableThreshold on VALIDATION for sensitivity>=0.90 and refit temperature on VALIDATION - do NOT report metrics at 0.5. classOrder is the fixed ICDR label order the (future) net head must match. disagreementLevels: rule vs CNN gap that raises grade.disagreement. useFusion off until Track A lesion features + a fitted fusion model exist.",
+    "modelInputSize": [224, 224],
+    "classOrder": [0, 1, 2, 3, 4],
     "referableThreshold": 0.5,
     "confidenceMin": 0.6,
-    "temperature": 1.5
+    "confidenceHigh": 0.85,
+    "confidenceLow": 0.55,
+    "temperature": 1.5,
+    "disagreementLevels": 2,
+    "useFusion": false
   },
   "xai": {
+    "_comment": "Track B (Phase 8). alaHighThreshold/alaLowThreshold band the Attention-Lesion Agreement score. gradcamColormap is a named MATLAB colormap for the heatmap overlay. Under Path C no Grad-CAM is produced (no trained net); ALA is NaN and these are dormant until a net exists.",
     "gradcamPercentile": 95,
     "lesionDilationPx": 10,
-    "alaLowThreshold": 0.4
+    "alaLowThreshold": 0.4,
+    "alaHighThreshold": 0.7,
+    "gradcamColormap": "jet"
   },
   "structures": {
     "_comment": "Track A (Phase 5). frangiScales are vessel radii in px at the 512px target (multi-scale). vesselThreshold is on the normalised 0..1 vesselness response. minVesselLength/odRadiusRange/foveaSearchWindow are px at 512 (disc-scaled where noted in code). odSearchTopPercent = brightest fraction of inpainted image searched for the OD. foveaDiscDiameters = temporal offset of the fovea from the OD in disc DIAMETERS. odFallbackRadiusFraction = OD radius as a fraction of FOV radius when localisation fails.",

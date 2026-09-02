@@ -1289,11 +1289,31 @@ classdef NETRA_App < handle
             end
             app.styleAxes(ax);
 
-            app.WBHandles.confPill.Text = sprintf('Confidence: %.0f%%   Band: %s', ...
-                100*nz(cr.grade.confidence), defaultStr(cr.xai.confidenceBand,'-'));
-            app.WBHandles.ruleRow.Text = sprintf('Rule cross-check: rule=%s  CNN=%s  disagreement=%s', ...
-                numOrDash(cr.grade.ruleEstimate), numOrDash(cr.grade.icdr), ...
-                string(cr.grade.disagreement));
+            % Provenance banner (Track B). Never render a non-REAL grade in the
+            % same visual weight as a model output: state plainly what it is.
+            gProv = string(cr.provenance.grading);
+            if gProv == "RULE_BASED_NO_CNN"
+                app.WBHandles.confPill.Text = ...
+                    'Rule-based grading (no trained CNN available). Confidence n/a.';
+                app.WBHandles.confPill.FontColor = t.color.warn;
+            elseif gProv == "REAL"
+                app.WBHandles.confPill.Text = sprintf('Confidence: %.0f%%   Band: %s', ...
+                    100*nz(cr.grade.confidence), defaultStr(cr.xai.confidenceBand,'-'));
+                app.WBHandles.confPill.FontColor = t.color.text;
+            else
+                app.WBHandles.confPill.Text = sprintf('Grading: %s', defaultStr(gProv,'-'));
+                app.WBHandles.confPill.FontColor = t.color.textMuted;
+            end
+            % Rule cross-check: on path C there is no CNN to disagree with, so
+            % show the rule estimate as the grade source, not a comparison.
+            if gProv == "RULE_BASED_NO_CNN"
+                app.WBHandles.ruleRow.Text = sprintf('Grade from 4-2-1 rule estimate: %s', ...
+                    numOrDash(cr.grade.ruleEstimate));
+            else
+                app.WBHandles.ruleRow.Text = sprintf('Rule cross-check: rule=%s  CNN=%s  disagreement=%s', ...
+                    numOrDash(cr.grade.ruleEstimate), numOrDash(cr.grade.icdr), ...
+                    string(cr.grade.disagreement));
+            end
 
             % lesions table + hover tooltip + live legend (Phase 6)
             app.WBHandles.lesionTbl.Data = app.lesionTableData(cr);
@@ -1306,17 +1326,35 @@ classdef NETRA_App < handle
                 app.WBHandles.lesionLegend.Text = 'Legend: (mock case)';
             end
 
-            % xai
-            app.WBHandles.alaLabel.Text = sprintf('ALA: %.2f', nz(cr.xai.agreementScore));
-            app.WBHandles.alaBar.set(nz(cr.xai.agreementScore), ...
-                app.Config.thresholds.xai.alaLowThreshold);
+            % xai - ALA. NaN means "no lesions to agree with", clinically
+            % distinct from a low score; never render NaN as 0.00 (Track B).
+            ala = cr.xai.agreementScore;
+            alaLow = app.Config.thresholds.xai.alaLowThreshold;
+            if isnan(ala)
+                app.WBHandles.alaLabel.Text = 'ALA: n/a';
+                app.WBHandles.alaLabel.FontColor = t.color.textMuted;
+                app.WBHandles.attn.Text = "Attention-lesion agreement not applicable " + ...
+                    "- no lesions detected (or no trained CNN).";
+            else
+                app.WBHandles.alaLabel.Text = sprintf('ALA: %.2f', ala);
+                if ala < alaLow
+                    app.WBHandles.alaLabel.FontColor = t.color.warn;   % poorly aligned
+                else
+                    app.WBHandles.alaLabel.FontColor = t.color.text;
+                end
+                app.WBHandles.alaBar.set(ala, alaLow);
+            end
             if isempty(cr.xai.evidenceBullets)
                 app.WBHandles.evidence.Text = 'Evidence: (none)';
             else
                 bullets = "- " + cr.xai.evidenceBullets;
                 app.WBHandles.evidence.Text = "Evidence:" + newline + strjoin(bullets, newline);
             end
-            app.WBHandles.attn.Text = string(cr.xai.attentionSummary);
+            % attn is already set to the "not applicable" message when ALA is
+            % NaN; otherwise show the stage's attention summary.
+            if ~isnan(cr.xai.agreementScore)
+                app.WBHandles.attn.Text = string(cr.xai.attentionSummary);
+            end
         end
 
         function data = lesionTableData(app, cr)
