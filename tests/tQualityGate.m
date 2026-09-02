@@ -11,7 +11,10 @@ classdef tQualityGate < matlab.unittest.TestCase
     methods (TestClassSetup)
         function setup(tc)
             tc.Cfg = netra.loadConfig();
-            tc.Clean = synthFundus(512);
+            % Prefer a REAL fundus (grade-0 APTOS) so quality thresholds are
+            % exercised on real pixels; fall back to a synthetic fundus when the
+            % dataset is absent (fresh clone / CI).
+            tc.Clean = realCleanFundusOrSynthetic(512);
         end
     end
 
@@ -122,6 +125,14 @@ function cr = makeCr(img)
     [mask,~] = netra.preproc.fovMask(img, netra.loadConfig());
     cr.img.fovMask = mask;
     delete(tmp);
+end
+
+function img = realCleanFundusOrSynthetic(n)
+%REALCLEANFUNDUSORSYNTHETIC  Real grade-0 APTOS fundus if on disk, else synthetic.
+    img = realImage("clean", n);
+    if isempty(img)
+        img = synthFundus(n);
+    end
 end
 
 function img = synthFundus(n)

@@ -73,9 +73,15 @@ function buildCore(sub)
 %   Block equations mirror netra.sim.numericalModel. Signals are named via the
 %   line 'Name' property so the model is self-documenting on screen.
 
-    % Clear the default In/Out ports Subsystem ships with.
-    delete_block([sub '/In1']);
-    delete_block([sub '/Out1']);
+    % Clear the default In/Out ports a library Subsystem ships with. A
+    % 'built-in/Subsystem' may come EMPTY (no In1/Out1), so delete only what
+    % actually exists rather than assuming the default ports are present.
+    for port = ["In1","Out1"]
+        blk = [sub '/' char(port)];
+        if getSimulinkBlockHandle(blk) ~= -1
+            delete_block(blk);
+        end
+    end
 
     add = @(type, name, pos, varargin) add_block(type, [sub '/' name], ...
         'Position', pos, varargin{:});
