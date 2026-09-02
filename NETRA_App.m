@@ -1077,13 +1077,13 @@ classdef NETRA_App < handle
 
         function data = queueTableData(~, Q)
             if isempty(Q), data = {}; return; end
+            % Per-row confidence formatting: compose gives an N x1 string,
+            % so every column below is N x1 and the concat is well-formed.
+            conf = cellstr(compose('%.2f', Q.confidence));
             data = [cellstr(Q.uid), cellstr(string(Q.age)), ...
-                    cellstr(string(Q.icdr)), cellstr(sprintf('%.2f\n', Q.confidence)), ...
+                    cellstr(string(Q.icdr)), conf, ...
                     cellstr(Q.urgency), cellstr(Q.flags), ...
                     cellstr(string(Q.timestamp,'HH:mm'))];
-            % fix the confidence column (sprintf above concatenated); rebuild
-            conf = arrayfun(@(x) sprintf('%.2f', x), Q.confidence, 'UniformOutput', false);
-            data(:,4) = conf;
         end
 
         function drawAgreementChart(app)
