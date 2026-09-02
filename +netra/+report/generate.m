@@ -21,6 +21,6 @@ function pdfPath = generate(cr, cfg)
     end
 
     % Phase 0: compute the path we WOULD write to, but do not create a file.
-    pdfPath = string(fullfile('data', 'cases', ...
-        char(cr.meta.uid) + "_report.pdf"));
+    fname = cr.meta.uid + "_report.pdf";        % string + string -> string
+    pdfPath = string(fullfile('data', 'cases', char(fname)));
 end
