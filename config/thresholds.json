@@ -36,7 +36,7 @@
     "uniformityTrigger": 0.7,
     "claheClipMin": 0.004,
     "contrastTarget": 0.18,
-    "denoiseTrigger": 0.9,
+    "denoiseTrigger": 2.0,
     "benGrahamSigmaFraction": 0.05
   },
   "degradation": {
