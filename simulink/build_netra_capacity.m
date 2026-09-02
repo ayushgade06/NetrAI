@@ -34,7 +34,10 @@ function slxPath = build_netra_capacity(slxPath)
         here = fileparts(mfilename('fullpath'));
         slxPath = fullfile(here, 'netra_capacity.slx');
     end
-    if exist('new_system', 'file') == 0 || license('test','Simulink') ~= 1
+    % new_system is a Simulink built-in; exist(...,'file') returns 0 for
+    % built-ins even when Simulink is installed, so check exist() untyped
+    % (built-in -> 5) rather than the 'file' filter.
+    if exist('new_system') == 0 || license('test','Simulink') ~= 1 %#ok<EXIST>
         error('NETRA:sim:noSimulink', ...
             ['Simulink is not available; cannot build %s. The Capacity ' ...
              'Planner falls back to the labelled MATLAB numerical model.'], slxPath);

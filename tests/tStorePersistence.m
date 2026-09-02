@@ -70,30 +70,36 @@ classdef tStorePersistence < matlab.unittest.TestCase
 
         function interruptedSaveLeavesPreviousRegistryIntact(tc)
             % Save a good case, then force the NEXT save's registry swap to
-            % fail by holding registry.mat OPEN for writing: on Windows the
-            % rename-over step (movefile 'f') hits a sharing violation and
-            % throws. The previous registry must survive unchanged and the
-            % error must surface as NETRA:store:registryWrite.
+            % fail and verify the previous registry survives unchanged and the
+            % error surfaces as NETRA:store:registryWrite.
+            %
+            % Injection: make data/ read-only so the temp-write / rename step
+            % cannot land. This is portable (fopen 'r+' does NOT lock on Linux /
+            % MATLAB Online, so the old handle-holding trick silently no-ops
+            % there). If the OS ignores the read-only bit (e.g. running as root),
+            % the write still succeeds -> we can't exercise the failure path, so
+            % assume-skip rather than report a false failure.
             good = tc.makeCase("PHC001","OD",1);
             netra.store.save(good, tc.Cfg);
             before = netra.store.registry();
             tc.verifyEqual(height(before), 1);
 
-            regPath = fullfile(tc.Root, 'data', 'registry.mat');
-            fid = fopen(regPath, 'r+');                          % hold an exclusive handle
-            tc.assumeGreaterThanOrEqual(fid, 3, 'Could not open registry.mat to lock it.');
-            cleanup = onCleanup(@() closeAndClean(fid, regPath)); %#ok<NASGU>
+            dataDir = fullfile(tc.Root, 'data');
+            fileattrib(dataDir, '-w');                          % read-only
+            restore = onCleanup(@() fileattrib(dataDir, '+w')); %#ok<NASGU>
 
-            % Build bad case WITHOUT persisting through the pipeline (which
-            % would swallow the error); save it explicitly so the error is
-            % observable.
+            % Confirm the injection actually blocks writes here; if not, skip.
+            probe = fullfile(dataDir, 'writeprobe.tmp');
+            [okW, ~] = localTryWrite(probe);
+            tc.assumeFalse(okW, ...
+                'Filesystem ignores read-only bit (root?); cannot test write-failure path.');
+
             bad = tc.makeCaseNoPersist("PHC002","OS",2);
             tc.verifyError(@() netra.store.save(bad, tc.Cfg), ...
                 'NETRA:store:registryWrite');
 
-            % Release the lock before reading back, so the read is clean.
-            fclose(fid);
-            bak = [regPath '.bak']; if isfile(bak), delete(bak); end
+            fileattrib(dataDir, '+w');                          % re-enable for readback
+            bak = fullfile(dataDir,'registry.mat.bak'); if isfile(bak), delete(bak); end
 
             after = netra.store.registry();
             tc.verifyEqual(height(after), 1);                   % still just the good case
@@ -150,6 +156,19 @@ function closeAndClean(fid, regPath)
     try, if any(fid == fopen('all')), fclose(fid); end; catch, end
     bak = [regPath '.bak'];
     if isfile(bak), delete(bak); end
+end
+
+function [ok, err] = localTryWrite(path)
+%LOCALTRYWRITE  True if a file can be created at PATH (probe for writability).
+    ok = false; err = '';
+    fid = fopen(path, 'w');
+    if fid >= 3
+        fclose(fid);
+        if isfile(path), delete(path); end
+        ok = true;
+    else
+        err = 'fopen failed';
+    end
 end
 
 % ======================= fixtures =======================================

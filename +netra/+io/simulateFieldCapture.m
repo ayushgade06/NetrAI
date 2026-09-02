@@ -40,7 +40,10 @@ function imgOut = simulateFieldCapture(imgIn, type, severity, seed)
     type = lower(strtrim(type));
     if type == "random"
         types = ["blur","underexposed","overexposed","partialfov","haze"];
-        pick  = types(randi(rs, numel(types)));
+        % Pick the type deterministically from the seed itself (not just the
+        % local stream) so different seeds reliably choose different types, and
+        % forward a seed-dependent sub-seed so seed-driven degradations differ.
+        pick  = types(mod(round(seed), numel(types)) + 1);
         imgOut = netra.io.simulateFieldCapture(imgIn, pick, severity, seed + 101);
         return;
     end
@@ -79,12 +82,18 @@ function imgOut = simulateFieldCapture(imgIn, type, severity, seed)
 
         case "haze"
             % Alpha-blend toward a bright grey veil -> lowered local contrast.
-            alpha = lerp(dg.hazeAlphaRange, severity);
-            veil  = uint8(200);   % bright grey haze colour
-            imgOut = imgIn;
-            for c = 1:3
-                ch = double(imgIn(:,:,c));
-                imgOut(:,:,c) = uint8((1-alpha)*ch + alpha*double(veil));
+            % severity scales alpha from 0 (true no-op) to hazeAlphaRange(2), so
+            % severity 0 leaves the image untouched (severityZeroIsApproxNoOp).
+            alpha = severity * dg.hazeAlphaRange(2);
+            if alpha <= 1e-3
+                imgOut = imgIn;
+            else
+                veil  = uint8(200);   % bright grey haze colour
+                imgOut = imgIn;
+                for c = 1:3
+                    ch = double(imgIn(:,:,c));
+                    imgOut(:,:,c) = uint8((1-alpha)*ch + alpha*double(veil));
+                end
             end
 
         otherwise

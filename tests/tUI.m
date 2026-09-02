@@ -61,7 +61,10 @@ classdef tUI < matlab.unittest.TestCase
             tc.addTeardown(@() delete(fig));
             prov = struct('quality',"MOCK",'grading',"MOCK",'routing',"REAL");
             h = netra.ui.statusBanner(fig, prov);
-            tc.verifySubstring(h.Label.Text, 'MOCK COMPONENTS ACTIVE');
+            % Banner headline was reworded to the more explicit
+            % "STAGE PROVENANCE - MOCK (placeholder): ...". The intent of the
+            % test - that mock stages are named - is unchanged.
+            tc.verifySubstring(h.Label.Text, 'MOCK');
             tc.verifySubstring(h.Label.Text, 'quality');
             tc.verifySubstring(h.Label.Text, 'grading');
         end
