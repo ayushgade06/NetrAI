@@ -63,10 +63,13 @@ classdef tPipeline < matlab.unittest.TestCase
             tc.verifyGreaterThanOrEqual(cr.timing.total, s - tol);
         end
 
-        function completesUnderOneSecond(tc)
+        function completesUnderEightSeconds(tc)
+            % The real Track A/B/C pipeline (classical CV + rule grading) is
+            % legitimately slower than the retired 1s mock budget. 8s is the
+            % Track D single-image end-to-end target on the demo machine.
             cr = netra.runPipeline(netra.newCaseRecord(tc.Img), tc.Cfg, tc.Models);
-            tc.verifyLessThan(cr.timing.total, 1.0, ...
-                'Mock pipeline must complete in under one second.');
+            tc.verifyLessThan(cr.timing.total, 8.0, ...
+                'Single-image pipeline must complete in under eight seconds.');
         end
 
         function brokenStageIsCaughtNotFatal(tc)
@@ -93,8 +96,9 @@ classdef tPipeline < matlab.unittest.TestCase
             % End-to-end: corrupt cfg so one stage throws inside runPipeline,
             % and verify the pipeline still returns a full caseRecord.
             badCfg = tc.Cfg;
-            badCfg.thresholds.preproc = rmfield(badCfg.thresholds.preproc, ...
-                'claheClipDefault');   % preproc stage reads this -> throws
+            % enhance.m does `pp = cfg.thresholds.preproc` then reads its fields,
+            % so removing the whole preproc block guarantees the stage throws.
+            badCfg.thresholds = rmfield(badCfg.thresholds, 'preproc');
             cr = netra.runPipeline(netra.newCaseRecord(tc.Img), badCfg, tc.Models);
             tc.verifyClass(cr, 'struct');
             tc.verifyEqual(cr.provenance.preproc, "FAILED");

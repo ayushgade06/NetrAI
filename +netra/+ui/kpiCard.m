@@ -52,11 +52,13 @@ function h = kpiCard(parent, label, value, unit, opts)
     subLbl.Layout.Row = 3;
 
     h = struct('Panel', panel, 'ValueLabel', valLbl, 'SubLabel', subLbl);
-    h.set = @(v, s) localSet(valLbl, subLbl, v, unit, s);
+    % varargin so .set(value) and .set(value, sub) both work (the anon wrapper
+    % must not force the optional sub arg — localSet already guards on nargin).
+    h.set = @(varargin) localSet(valLbl, subLbl, unit, varargin{:});
 end
 
 % ------------------------------------------------------------------------
-function localSet(valLbl, subLbl, value, unit, sub)
+function localSet(valLbl, subLbl, unit, value, sub)
     valLbl.Text = localFmt(value, unit);
     if nargin >= 5, subLbl.Text = sub; end
 end

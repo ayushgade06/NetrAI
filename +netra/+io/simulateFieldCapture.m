@@ -67,8 +67,9 @@ function imgOut = simulateFieldCapture(imgIn, type, severity, seed)
             imgOut = gammaAdjust(imgIn, gamma);
             % Add a mild additive lift so highlights actually clip (saturated
             % pixel fraction is the quantity the test checks).
-            lift = uint8(severity * 60);
-            imgOut = imadd(imgOut, lift);
+            % scalar DOUBLE lift: imadd requires the addend be same-size/class
+            % or a scalar double (a scalar uint8 is rejected in R2026a).
+            imgOut = imadd(imgOut, severity * 60);
 
         case "partialfov"
             % Occlude a chord of the frame (as if the pupil/eyelid clipped the

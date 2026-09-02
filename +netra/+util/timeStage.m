@@ -19,13 +19,22 @@ function [out, elapsed] = timeStage(fnHandle, varargin)
     end
 
     t0 = tic;
-    if nargout(fnHandle) == 0
-        % Stage yields no output (e.g. it only ever errors). Call it for its
-        % side effect / to let its own error propagate, rather than requesting
-        % an output MATLAB won't bind (which would throw MATLAB:maxlhs and mask
-        % the real failure).
-        fnHandle(varargin{:});
-        out = [];
+    % nargout(fnHandle) is 0 for a zero-output function and -1 for an anonymous
+    % handle whose output count is unknown. In BOTH cases requesting an output
+    % can throw MATLAB:maxlhs and mask the stage's own error, so call without
+    % binding an output first, then bind one only if the handle actually
+    % produced it.
+    if nargout(fnHandle) <= 0
+        try
+            out = fnHandle(varargin{:});   % anonymous handle may still return a value
+        catch ME
+            if ME.identifier == "MATLAB:maxlhs" || ME.identifier == "MATLAB:TooManyOutputs"
+                fnHandle(varargin{:});     % no output to bind; run for side effect / error
+                out = [];
+            else
+                rethrow(ME);               % the stage's real error propagates
+            end
+        end
     else
         out = fnHandle(varargin{:});
     end

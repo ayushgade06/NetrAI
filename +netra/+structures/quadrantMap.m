@@ -26,7 +26,7 @@ function qmap = quadrantMap(fovMask, odCenter, foveaCenter, eye, cfg)
         fovMask logical
         odCenter (1,2) double
         foveaCenter (1,2) double
-        eye string = "OD" %#ok<INUSA>
+        eye string %#ok<INUSA>   % required: a later required arg (cfg) forbids a default here
         cfg (1,1) struct
     end
 
