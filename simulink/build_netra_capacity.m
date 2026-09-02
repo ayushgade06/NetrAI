@@ -126,14 +126,14 @@ function buildCore(sub)
     add('built-in/DiscreteIntegrator', 'UpBacklog', [700 250 760 290], ...
         'gainval', '1', 'InitialCondition', '0', 'SampleTime', '1', ...
         'LimitOutput', 'on', 'LowerSaturationLimit', '0');
-    add('built-in/MinMax', 'Uploaded', [800 250 840 290], 'Function', 'min');
+    add('built-in/MinMax', 'Uploaded', [800 250 840 290], 'Function', 'min', 'Inputs', '2');
 
     % ---- AI processing: backlog integrator sat, min with aiCap ----------
     add('built-in/Sum', 'AiBacklogSum', [880 250 910 290], 'Inputs', '+-');
     add('built-in/DiscreteIntegrator', 'AiBacklog', [940 250 1000 290], ...
         'gainval', '1', 'InitialCondition', '0', 'SampleTime', '1', ...
         'LimitOutput', 'on', 'LowerSaturationLimit', '0');
-    add('built-in/MinMax', 'Processed', [1040 250 1080 290], 'Function', 'min');
+    add('built-in/MinMax', 'Processed', [1040 250 1080 290], 'Function', 'min', 'Inputs', '2');
 
     % ---- routing split: autoClearRate auto-cleared, rest to review ------
     add('built-in/Gain', 'AutoClear', [1120 200 1180 230], 'Gain', 'autoClearRate');
@@ -144,7 +144,7 @@ function buildCore(sub)
     add('built-in/DiscreteIntegrator', 'ReviewQueue', [1280 300 1340 340], ...
         'gainval', '1', 'InitialCondition', '0', 'SampleTime', '1', ...
         'LimitOutput', 'on', 'LowerSaturationLimit', '0');
-    add('built-in/MinMax', 'Reviewed', [1380 300 1420 340], 'Function', 'min');
+    add('built-in/MinMax', 'Reviewed', [1380 300 1420 340], 'Function', 'min', 'Inputs', '2');
 
     % ---- cumulative sinks (Discrete Integrators) ------------------------
     add('built-in/DiscreteIntegrator', 'CumArrived', [560 120 620 150], ...
