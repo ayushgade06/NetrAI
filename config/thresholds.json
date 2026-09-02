@@ -1,7 +1,7 @@
 {
   "_comment": "NETRA thresholds. Every threshold used anywhere in the project lives here; never inline a number in code. Phase 2 added io.*, preproc.fov*, and degradation.*.",
   "quality": {
-    "_comment": "Phase 3. focusMin/contrastMin retained for the Phase 1 UI wiring; the eight *Min/*Max keys below are the per-feature gates. PLACEHOLDER values are engineering estimates on the 0..1 green-channel scale, NOT trained thresholds - retrain via training/train_quality.m and tune these against validation/results_quality.mat once APTOS is on disk.",
+    "_comment": "Phase 3. focusMin/contrastMin retained for the Phase 1 UI wiring; the eight *Min/*Max keys below are the per-feature gates. Track D calibrated focusLaplacianMin/focusTenengradMin against MEASURED features on a real APTOS grade-0 fundus (clean vs blur-0.9): clean Lap=0.042 Ten=1.52, blurred Lap=0.005 Ten=0.27. Thresholds set between those so severe blur trips the H4 hard-reject (both below) while a sharp image stays Good. Remaining values are still engineering estimates - refine against validation/results_quality.mat after train_quality.",
     "focusMin": 0.35,
     "illumUniformityMin": 0.4,
     "fovCompletenessMin": 0.85,
@@ -9,8 +9,8 @@
     "gradeableScoreMin": 60,
     "borderlineScoreMin": 40,
     "featureWeights": [0.22, 0.18, 0.12, 0.10, 0.12, 0.12, 0.07, 0.07],
-    "focusLaplacianMin": 0.06,
-    "focusTenengradMin": 0.02,
+    "focusLaplacianMin": 0.02,
+    "focusTenengradMin": 0.6,
     "saturatedFractionMax": 0.15,
     "darkFractionMax": 0.35,
     "contrastStdMin": 0.06,
