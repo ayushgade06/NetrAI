@@ -112,11 +112,15 @@ function [mask, metrics] = fovMask(img, cfg)
     metrics.boundingBox     = st.BoundingBox;
     metrics.centerOffset    = st.Centroid - [w/2, h/2];
 
-    % Completeness: how close the mask is to a full circle of the same radius.
-    % A complete round FOV -> area ~ pi*r^2 -> ratio ~1. A clipped (partial)
-    % FOV covers less than the fitted circle -> ratio < 1.
-    r = metrics.estimatedRadius;
-    circleArea = pi * r^2;
+    % Completeness: how close the mask is to a FULL circle whose diameter is the
+    % disc's widest extent. Using EquivDiameter here was a bug: EquivDiameter is
+    % the diameter of a circle with the SAME AREA as the mask, so pi*r^2 == area
+    % by definition and the ratio was always ~1, even for a clipped disc. Compare
+    % instead to a circle of the MAJOR-AXIS radius: a complete round FOV -> ratio
+    % ~1, a clipped (partial) FOV keeps a near-full major axis but less area ->
+    % ratio < 1.
+    rFull = st.MajorAxisLength / 2;
+    circleArea = pi * rFull^2;
     if circleArea > 0
         metrics.completeness = max(0, min(1, area / circleArea));
     else
