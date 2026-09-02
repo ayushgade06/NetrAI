@@ -89,13 +89,27 @@ function [ctr, rad, conf] = locateOD(img, fovMask, vesselMask, cfg)
             % nearest strong circle to the bright candidate
             d = hypot(centers(:,1)-cand(1), centers(:,2)-cand(2));
             [~, best] = min(d - 0.5*metric*rMax);   % prefer near + strong
-            if d(best) < 3*rMax
+            % Only accept the Hough circle if its centre lands INSIDE the FOV;
+            % imfindcircles can return a centre in the black border, which would
+            % put the OD ring off-retina. The bright-blob candidate is always
+            % inside, so fall back to it otherwise.
+            cxH = round(centers(best,1)); cyH = round(centers(best,2));
+            inBounds = cxH>=1 && cxH<=w && cyH>=1 && cyH<=h && fovMask(cyH,cxH);
+            if d(best) < 3*rMax && inBounds
                 ctr = centers(best,:);
                 rad = radii(best);
             end
         end
     catch
         % imfindcircles unavailable/failed: keep the bright-blob estimate.
+    end
+
+    % Final safety: guarantee the returned centre is inside the FOV (the demo
+    % overlay draws the OD ring here). If a degenerate path left it outside,
+    % snap to the FOV centroid.
+    cxr = round(ctr(1)); cyr = round(ctr(2));
+    if cxr<1 || cxr>w || cyr<1 || cyr>h || ~fovMask(cyr,cxr)
+        ctr = [cx cy];
     end
 
     % --- validation confidence ------------------------------------------
