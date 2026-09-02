@@ -6,11 +6,17 @@ and the pipeline data contract.** No image processing, ML, or UI yet.
 
 ## Quick start
 
-Requires MATLAB **R2023b or later** (base MATLAB only for Phase 0). Place a
-fundus image at `data/demo/sample01.jpg`, then:
+Requires MATLAB **R2023b or later** (base MATLAB only). A demo image ships at
+`data/demo/sample01.jpg`.
 
 ```matlab
 startup_netra
+seedMockRegistry          % one-time: ~40 fictional cases for the dashboard/queue
+app = NETRA_App;          % launch the seven-view UI
+```
+
+Headless pipeline use (no UI):
+```matlab
 cr = netra.runPipeline(netra.newCaseRecord('data/demo/sample01.jpg'));
 disp(cr)
 runtests('tests')
@@ -18,7 +24,18 @@ runtests('tests')
 
 `startup_netra` adds paths, loads config, and prints a toolbox-availability
 table. The pipeline runs all nine stages as MOCK stubs (fixed placeholder
-values) except **routing**, which is the one real rules engine in Phase 0.
+values) except **routing**, which is the one real rules engine.
+
+### The app (Phase 1)
+
+`NETRA_App` is a programmatic classdef (no `.mlapp`). Seven views: District
+Dashboard, New Screening, Quality Gate, Analysis Workbench, Review Queue, Case
+Review, Validation & Capacity. A **Field / Clinician** mode toggle (top-right)
+filters the nav rail. A persistent **provenance banner** shows amber and names
+every MOCK stage — expected in Phase 1, since almost everything is still mock.
+
+Dev layout aid: `NETRA_App('DevMode', true)` adds a verdict-override dropdown on
+the Quality Gate to force Good / Borderline / Ungradeable states.
 
 ## Layout
 
