@@ -1,0 +1,11 @@
+[
+  { "name": "Ungradeable image",              "condition": "quality.class == Ungradeable",                      "decision": "RECAPTURE",     "urgency": "None" },
+  { "name": "Proliferative / grade 4",         "condition": "grade >= 4",                                        "decision": "REVIEW_QUEUE",  "urgency": "Urgent" },
+  { "name": "Referable with macular lesions",  "condition": "grade >= 2 AND lesionNearMacula",                   "decision": "REVIEW_QUEUE",  "urgency": "Urgent" },
+  { "name": "Severe NPDR / grade 3",           "condition": "grade == 3",                                        "decision": "REVIEW_QUEUE",  "urgency": "Priority" },
+  { "name": "Moderate NPDR / grade 2",         "condition": "grade == 2",                                        "decision": "REVIEW_QUEUE",  "urgency": "Routine" },
+  { "name": "Low model confidence",            "condition": "confidence < grading.confidenceMin",                "decision": "REVIEW_QUEUE",  "urgency": "Routine" },
+  { "name": "Low XAI agreement (ALA)",         "condition": "agreementScore < xai.alaLowThreshold",              "decision": "REVIEW_QUEUE",  "urgency": "Routine" },
+  { "name": "Rule/CNN disagreement",           "condition": "grade.disagreement == true",                        "decision": "REVIEW_QUEUE",  "urgency": "Routine" },
+  { "name": "Auto-cleared (grade 0-1, confident)", "condition": "default",                                       "decision": "AUTO_CLEARED",  "urgency": "None" }
+]

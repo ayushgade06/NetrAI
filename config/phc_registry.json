@@ -1,0 +1,7 @@
+[
+  { "_comment": "FICTIONAL demo entities. These PHCs, districts and camera models are invented for the NETRA prototype and do not represent real facilities." },
+  { "id": "PHC001", "name": "Rampur Primary Health Centre",   "district": "Demo North", "cameraModel": "FictiCam FC-100" },
+  { "id": "PHC002", "name": "Lakshmipur Health Sub-Centre",   "district": "Demo North", "cameraModel": "FictiCam FC-100" },
+  { "id": "PHC003", "name": "Devgarh Community Health Centre", "district": "Demo South", "cameraModel": "FictiCam FC-200" },
+  { "id": "PHC004", "name": "Bansi Rural Health Post",         "district": "Demo East",  "cameraModel": "RetinaMock RM-50" }
+]

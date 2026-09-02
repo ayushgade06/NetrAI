@@ -1,0 +1,33 @@
+# NETRA .gitignore
+
+# Runtime case output (never committed)
+data/cases/
+
+# MATLAB autosave / temp
+*.asv
+*.m~
+*.autosave
+
+# MATLAB session/build artefacts
+slprj/
+codegen/
+*.slxc
+*.mex*
+octave-workspace
+
+# OS cruft
+.DS_Store
+Thumbs.db
+
+# Large files (>50 MB) must not be committed. Git cannot filter by size in
+# .gitignore directly; enforce via the pre-commit check below or manually.
+# Common large binaries kept out by extension:
+*.zip
+*.tar
+*.tar.gz
+*.7z
+*.h5
+*.onnx
+*.pb
+*.ckpt
+# Model weights over the size limit go to a release/DVC store, not git.

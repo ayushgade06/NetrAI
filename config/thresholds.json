@@ -1,0 +1,36 @@
+{
+  "_comment": "NETRA thresholds. Placeholder values for Phase 0. Every threshold used anywhere in the project lives here; never inline a number in code.",
+  "quality": {
+    "focusMin": 0.35,
+    "illumUniformityMin": 0.4,
+    "fovCompletenessMin": 0.85,
+    "contrastMin": 0.3,
+    "gradeableScoreMin": 60,
+    "borderlineScoreMin": 40
+  },
+  "preproc": {
+    "claheClipDefault": 0.01,
+    "claheClipMax": 0.05,
+    "targetSize": 512
+  },
+  "lesions": {
+    "maAreaMax": 120,
+    "maEccentricityMax": 0.85,
+    "maCircularityMin": 0.6,
+    "exMinArea": 15,
+    "odDilationPx": 20
+  },
+  "grading": {
+    "referableThreshold": 0.5,
+    "confidenceMin": 0.6,
+    "temperature": 1.5
+  },
+  "xai": {
+    "gradcamPercentile": 95,
+    "lesionDilationPx": 10,
+    "alaLowThreshold": 0.4
+  },
+  "structures": {
+    "discDiameterRatioFovea": 2.5
+  }
+}
