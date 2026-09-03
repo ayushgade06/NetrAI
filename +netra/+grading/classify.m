@@ -75,9 +75,31 @@ function cr = gradeWithCnn(cr, cfg, models, ruleEst)
         % Defensive: Track A did not produce a CNN input - resize from enhanced.
         modelInput = defensiveModelInput(cr, cfg);
     end
+    % Guarantee the input matches the net's expected size/type/channels
+    % (modelInputSize, single, RGB). A size/type mismatch makes predict error;
+    % this makes the CNN path robust regardless of how Track A shaped modelInput.
+    sz = cfg.thresholds.grading.modelInputSize(:).';
+    if ~isa(modelInput,'single'), modelInput = im2single(modelInput); end
+    if size(modelInput,3) == 1, modelInput = repmat(modelInput,1,1,3); end
+    if ~isequal(size(modelInput,1,2), sz(1:2))
+        modelInput = imresize(modelInput, sz(1:2));
+    end
 
-    logits = predict(models.grader, modelInput);          %#ok<NASGU> (real net)
-    probs  = netra.grading.applyTemperature(logits, cfg.thresholds.grading.temperature);
+    % A trainNetwork classification net's predict returns SOFTMAX PROBABILITIES,
+    % not raw logits. Temperature-scaling must therefore recover pseudo-logits
+    % (log p) first; softmax(log(p)/T) is the correct temperature-scaled dist and
+    % is identity at T=1. Applying applyTemperature directly to probs would be a
+    % double softmax. See training/train_grader.m (the net ends in a
+    % classificationLayer).
+    rawProbs = predict(models.grader, modelInput);
+    rawProbs = rawProbs(:).';
+    T = cfg.thresholds.grading.temperature;
+    if T == 1
+        probs = rawProbs / sum(rawProbs);
+    else
+        pseudoLogits = log(max(rawProbs, 1e-12));
+        probs = netra.grading.applyTemperature(pseudoLogits, T);
+    end
 
     [~, argmax] = max(probs);
     cr.grade.icdr          = argmax - 1;                  % classOrder 0..4

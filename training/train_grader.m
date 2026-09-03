@@ -218,16 +218,17 @@ end
 
 function lg = replaceHead(lg, learnableName, classLayerName, ~, nClasses, classes)
 %REPLACEHEAD  Swap the final learnable + classification layers for a 5-class head.
-    newLearnable = fullyConnectedLayer(nClasses, 'Name', 'fc_dr', ...
-        'WeightLearnRateFactor', 10, 'BiasLearnRateFactor', 10);
-    try
-        lg = replaceLayer(lg, learnableName, newLearnable);
-    catch
-        % squeezenet's learnable is a conv layer
-        newConv = convolution2dLayer(1, nClasses, 'Name', 'fc_dr', ...
+%   resnet18's final learnable is a fullyConnectedLayer (fc1000); squeezenet's is
+%   a CONV layer (conv10) followed by global average pooling, so it must be
+%   replaced with a conv - an FC there breaks the spatial dims. Choose by name.
+    if strcmp(learnableName, 'conv10')
+        newLearnable = convolution2dLayer(1, nClasses, 'Name', 'fc_dr', ...
             'WeightLearnRateFactor', 10, 'BiasLearnRateFactor', 10);
-        lg = replaceLayer(lg, learnableName, newConv);
+    else
+        newLearnable = fullyConnectedLayer(nClasses, 'Name', 'fc_dr', ...
+            'WeightLearnRateFactor', 10, 'BiasLearnRateFactor', 10);
     end
+    lg = replaceLayer(lg, learnableName, newLearnable);
     lg = replaceLayer(lg, classLayerName, ...
         classificationLayer('Name', 'dr_out', 'Classes', classes));
 end
