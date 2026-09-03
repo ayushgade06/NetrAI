@@ -1174,10 +1174,14 @@ classdef NETRA_App < handle
             app.mkButton(vg, 'Reset View', @() app.WBHandles.canvas.reset(), t.color.panelAlt);
             app.mkButton(vg, 'Fit', @() app.WBHandles.canvas.reset(), t.color.panelAlt);
 
-            % --- right: three stacked panels ---
-            rp = uigridlayout(g, [4 1], 'RowHeight', {'1x','1x','1x','fit'}, ...
+            % --- right: three stacked panels (scrollable so grade/lesion/xai
+            % panels + action bar stay reachable on short windows) ---
+            rpOuter = uipanel(g, 'BorderType','none', ...
+                'BackgroundColor', t.color.bg, 'Scrollable','on');
+            rp = uigridlayout(rpOuter, [4 1], ...
+                'RowHeight', {260,260,260,'fit'}, ...
                 'RowSpacing', t.space.gap, 'Padding',[0 0 0 0], ...
-                'BackgroundColor', t.color.bg);
+                'BackgroundColor', t.color.bg, 'Scrollable','on');
 
             app.buildWBGradingPanel(rp);
             app.buildWBLesionPanel(rp);
