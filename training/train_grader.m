@@ -152,20 +152,25 @@ function [imgs, labels] = loadSplitTable(root, aptos, which)
 end
 
 function ds = imgTable(paths, y, inSz)
-%IMGTABLE  Combined image+label datastore with Ben-Graham preprocessing.
-%   arrayDatastore needs OutputType 'same' so each label read is a scalar
-%   categorical (not a 1x1 cell); the transform then returns a {image, label}
-%   row that trainNetwork accepts as BOTH training and validation data. Without
-%   'same', trainNetwork rejects the validation datastore ("Invalid validation
-%   data").
-    % Custom ReadFcn: the default imageDatastore reader is imread, which fails on
-    % ".jpg" on MATLAB Online (see netra.io.readImageFile). Route reads through
-    % the robust explicit-format reader.
+%IMGTABLE  Labelled imageDatastore + a transform that preprocesses the image and
+%   carries the label. This is the pattern trainNetwork reads most reliably:
+%   the label rides on the imageDatastore (imds.Labels), and the transform's
+%   info struct passes it through so each read yields {image, label}. Avoids the
+%   combine()+horzcat path that fails to concatenate cell + categorical.
+%
+%   Custom ReadFcn routes reads through netra.io.readImageFile (the default
+%   imread fails on ".jpg" on MATLAB Online).
     imds = imageDatastore(cellstr(paths), ...
         'ReadFcn', @(p) netra.io.readImageFile(p));
-    lds  = arrayDatastore(y(:), 'OutputType', 'same');
-    ds0  = combine(imds, lds);
-    ds   = transform(ds0, @(c) {benGrahamCell(c{1}, inSz), c{2}});
+    imds.Labels = categorical(y(:));
+    ds = transform(imds, @(img, info) preprocWithLabel(img, info, inSz), ...
+                   'IncludeInfo', true);
+end
+
+function [dataOut, info] = preprocWithLabel(img, info, inSz)
+%PREPROCWITHLABEL  Preprocess image and pair it with its label for trainNetwork.
+    x = benGrahamCell(img, inSz);
+    dataOut = {x, info.Label};
 end
 
 function [X, y] = preprocArray(paths, y, inSz)
