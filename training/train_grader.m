@@ -58,8 +58,12 @@ function meta = train_grader(opts)
     yVal    = categorical(vLabels, 0:4, cellstr(string(0:4)));
 
     % --- datastores with Ben-Graham-style preprocessing -----------------
+    % Training streams from a datastore (memory-light over 2048 images).
+    % Validation is preprocessed ONCE into an in-memory 4-D array + label vector
+    % - trainNetwork always accepts {XVal, YVal} for validation, avoiding the
+    % transform-datastore "Invalid validation data" rejection.
     trainDS = imgTable(imgs, yTrain, inSz);
-    valDS   = imgTable(vImgs, yVal, inSz);
+    [XVal, yValArr] = preprocArray(vImgs, yVal, inSz);
 
     % --- network: pretrained backbone, new 5-class head -----------------
     [net0, backboneUsed] = makeBackbone(opts.backbone, inSz, classes);
@@ -76,7 +80,7 @@ function meta = train_grader(opts)
         'MaxEpochs', opts.maxEpochs, ...
         'MiniBatchSize', opts.miniBatch, ...
         'Shuffle', 'every-epoch', ...
-        'ValidationData', valDS, ...
+        'ValidationData', {XVal, yValArr}, ...
         'ValidationFrequency', valFreq, ...
         'ExecutionEnvironment', 'auto', ...      % GPU if present, else CPU
         'Verbose', true, ...
@@ -87,9 +91,9 @@ function meta = train_grader(opts)
     net = trainNetwork(trainDS, net0, options);
 
     % --- validation metrics (measured, saved with the model) ------------
-    predV = classify(net, valDS);
-    accV  = mean(predV == yVal);
-    kappaV = quadraticKappa(double(yVal)-1, double(predV)-1, 0:4);
+    predV = classify(net, XVal);
+    accV  = mean(predV == yValArr);
+    kappaV = quadraticKappa(double(yValArr)-1, double(predV)-1, 0:4);
 
     meta = struct();
     meta.dataset       = "APTOS2019";
@@ -158,6 +162,18 @@ function ds = imgTable(paths, y, inSz)
     lds  = arrayDatastore(y(:), 'OutputType', 'same');
     ds0  = combine(imds, lds);
     ds   = transform(ds0, @(c) {benGrahamCell(c{1}, inSz), c{2}});
+end
+
+function [X, y] = preprocArray(paths, y, inSz)
+%PREPROCARRAY  Preprocess a list of images into an in-memory 4-D single array.
+%   Used for validation data (a few hundred images), which trainNetwork accepts
+%   as {X, y} without any datastore-format ambiguity.
+    n = numel(paths);
+    X = zeros(inSz(1), inSz(2), 3, n, 'single');
+    for i = 1:n
+        X(:,:,:,i) = benGrahamCell(imread(char(paths(i))), inSz);
+    end
+    y = y(:);
 end
 
 function out = benGrahamCell(img, inSz)
