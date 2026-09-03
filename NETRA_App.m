@@ -38,6 +38,7 @@ classdef NETRA_App < handle
         % --- top-level UI handles ---
         Fig
         NavButtons   struct = struct()          % name -> uibutton
+        NavGrid                                  % the nav rail uigridlayout (row heights)
         NavPanel
         ModeSwitch
         Banner                                   % statusBanner handle struct
@@ -194,6 +195,7 @@ classdef NETRA_App < handle
                 'RowSpacing', t.space.gapSm, ...
                 'Padding', [t.space.gapSm t.space.pad t.space.gapSm t.space.pad], ...
                 'BackgroundColor', t.color.navBg);
+            app.NavGrid = g;   % kept so applyMode can collapse hidden nav rows
 
             title = uilabel(g, 'Text', 'NETRA', ...
                 'FontName', t.font.family, 'FontSize', t.font.h1, ...
@@ -2108,12 +2110,26 @@ classdef NETRA_App < handle
         end
 
         function applyMode(app)
+            % Show/hide nav buttons per persona AND collapse the grid rows of
+            % hidden buttons to 0 height. A uigridlayout row keeps its height
+            % when its child is Visible='off', so hidden views otherwise leave a
+            % blank gap in the rail (e.g. between Workbench and Validation in
+            % Field mode). Collapsing the row removes the gap.
+            t = netra.ui.theme();
             allowed = app.viewsForMode();
+            rowH = app.NavGrid.RowHeight;                 % row 1 = title, last = '1x'
             for k = 1:numel(app.NavOrder)
                 nm = app.NavOrder(k);
-                vis = matlab.lang.OnOffSwitchState(ismember(nm, allowed));
-                app.NavButtons.(app.key(nm)).Visible = vis;
+                shown = ismember(nm, allowed);
+                app.NavButtons.(app.key(nm)).Visible = ...
+                    matlab.lang.OnOffSwitchState(shown);
+                if shown
+                    rowH{k+1} = t.size.buttonHeight + 8;   % normal height
+                else
+                    rowH{k+1} = 0;                         % collapse the gap
+                end
             end
+            app.NavGrid.RowHeight = rowH;
         end
 
         function v = viewsForMode(app)
