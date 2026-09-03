@@ -53,11 +53,11 @@ function stem = pickStem(aptos, kind)
         ids = string(T{:,idCol});
         if kind == "clean" && ~isempty(gCol)
             g = double(T{:,gCol});
-            hit = find(g == 0, 1);
+            cand = sort(ids(g == 0));      % SORTED -> deterministic across clones
         else
-            hit = 1;
+            cand = sort(ids);
         end
-        if ~isempty(hit), stem = ids(hit); return; end
+        if ~isempty(cand), stem = cand(1); return; end
     end
 end
 

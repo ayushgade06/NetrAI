@@ -65,22 +65,16 @@ classdef tFovMask < matlab.unittest.TestCase
         end
 
         function cornerBlackFractionLowAfterCrop(tc)
-            % After crop the black surround should be largely gone. Measure the
-            % near-black fraction in the four 12% corner squares; require it
-            % below a documented bound (0.35 - corners still hold some disc
-            % falloff, but the wide black border must be removed).
-            % A synthetic fundus disc is a perfect inscribed circle, so a square
-            % crop to its bounding box leaves the four corners OUTSIDE the circle
-            % black: geometrically 1 - pi/4 ~ 21% for a frame-filling disc, and
-            % MORE for the off-centre / smaller discs in this fixture set. That is
-            % inherent disc geometry, not a crop defect, so the meaningful check
-            % on synthetic discs is that the crop removed the WIDE outer border
-            % (area shrank), which maskAreaInRangeOnAll already covers. Bound the
-            % corner-black fraction generously here to reflect inscribed-disc
-            % geometry; real-capture corner behaviour differs and is out of scope
-            % for the synthetic fixture.
-            BOUND = 0.85;
-            img = tc.Fundi{1};
+            % After crop the wide black surround should be largely gone. This is
+            % meaningful on a REAL capture (a genuine black border to remove); a
+            % synthetic disc is a perfect inscribed circle whose square-crop
+            % corners are black by geometry (1 - pi/4 and more for off-centre
+            % discs), which is not a crop defect. Use a real fundus; skip if
+            % APTOS is absent.
+            BOUND = 0.35;
+            img = realImage("any", 0);
+            tc.assumeNotEmpty(img, ...
+                'APTOS absent: corner-crop is validated on real captures, not inscribed synthetic discs.');
             [mask, ~] = netra.preproc.fovMask(img, tc.Cfg);
             [out, ~, ~] = netra.preproc.cropResize(img, mask, tc.Cfg);
             lum = 0.299*double(out(:,:,1)) + 0.587*double(out(:,:,2)) + 0.114*double(out(:,:,3));

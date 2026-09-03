@@ -60,7 +60,16 @@ classdef tQualityGate < matlab.unittest.TestCase
         end
 
         function heavilyBlurredIsUngradeable(tc)
-            blurred = netra.io.simulateFieldCapture(tc.Clean, "blur", 0.9, 7);
+            % Blur rejection must be tested on a REAL fundus: the synthetic
+            % fixture's sin/cos grid texture aliases under Gaussian blur and its
+            % focus features do NOT drop (they can even rise), so blur is
+            % undetectable there - an artefact of the synthetic texture, not the
+            % detector. On real retina, blur cleanly tanks focus. Use a pinned
+            % (sorted-deterministic) real grade-0 fundus; skip if APTOS absent.
+            realClean = realImage("clean", 512);
+            tc.assumeNotEmpty(realClean, ...
+                'APTOS absent: blur rejection is validated on real fundus pixels.');
+            blurred = netra.io.simulateFieldCapture(realClean, "blur", 0.9, 7);
             cr = tc.assessImg(blurred);
             tc.verifyEqual(cr.quality.class, "Ungradeable", ...
                 sprintf('Blurred image classified %s (score %.1f).', ...
