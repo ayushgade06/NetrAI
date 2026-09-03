@@ -11,10 +11,13 @@ classdef tQualityGate < matlab.unittest.TestCase
     methods (TestClassSetup)
         function setup(tc)
             tc.Cfg = netra.loadConfig();
-            % Prefer a REAL fundus (grade-0 APTOS) so quality thresholds are
-            % exercised on real pixels; fall back to a synthetic fundus when the
-            % dataset is absent (fresh clone / CI).
-            tc.Clean = realCleanFundusOrSynthetic(512);
+            % Use a DETERMINISTIC texture-rich synthetic fundus: it is identical
+            % every run (unlike "whichever real image the CSV returns first",
+            % which varies between clones and made the blur threshold flaky), and
+            % for a blur-REJECTION test a controlled amount of high-frequency
+            % texture is exactly what we want - sharp clean vs unambiguously
+            % blurred. Real-image behaviour is validated by eval_quality on APTOS.
+            tc.Clean = synthFundus(512);
         end
     end
 

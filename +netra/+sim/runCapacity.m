@@ -24,7 +24,16 @@ function out = runCapacity(p)
         p (1,1) struct
     end
 
-    maxRt = 10;
+    % Path-aware budget: the numerical model is near-instant, but a real
+    % Simulink run pays a one-time model-compile cost (tens of seconds on the
+    % first call, especially on MATLAB Online), which is expected and not a
+    % failure. Give the Simulink path a generous budget; keep the numerical path
+    % tight so a genuinely runaway numerical loop is still caught.
+    if simulinkAvailable()
+        maxRt = 90;
+    else
+        maxRt = 10;
+    end
     if isfield(p, 'maxRuntimeSeconds') && isfinite(p.maxRuntimeSeconds)
         maxRt = p.maxRuntimeSeconds;
     end
