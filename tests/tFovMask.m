@@ -72,7 +72,7 @@ classdef tFovMask < matlab.unittest.TestCase
             % discs), which is not a crop defect. Use a real fundus; skip if
             % APTOS is absent.
             BOUND = 0.35;
-            img = realImage("any", 0);
+            img = realImage("clean", 512);   % square, same code path as other real-image tests
             tc.assumeNotEmpty(img, ...
                 'APTOS absent: corner-crop is validated on real captures, not inscribed synthetic discs.');
             [mask, ~] = netra.preproc.fovMask(img, tc.Cfg);
