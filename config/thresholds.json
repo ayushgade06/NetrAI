@@ -110,6 +110,6 @@
     "reviewerHoursPerDay": 2,
     "simDays": 30,
     "solverStepDays": 1,
-    "maxRuntimeSeconds": 10
+    "maxRuntimeSeconds": 120
   }
 }
