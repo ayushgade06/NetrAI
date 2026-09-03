@@ -1382,7 +1382,7 @@ classdef NETRA_App < handle
                 data{k,1} = names{k};
                 data{k,2} = L.count;
                 data{k,3} = sprintf('%.1f', areaPct);
-                data{k,4} = strjoin(string(quads), ',');
+                data{k,4} = char(strjoin(string(quads), ','));
                 data{k,5} = ternStr(L.nearMacula > 0, 'yes','no');
             end
         end
