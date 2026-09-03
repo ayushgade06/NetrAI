@@ -167,11 +167,14 @@ end
 function [X, y] = preprocArray(paths, y, inSz)
 %PREPROCARRAY  Preprocess a list of images into an in-memory 4-D single array.
 %   Used for validation data (a few hundred images), which trainNetwork accepts
-%   as {X, y} without any datastore-format ambiguity.
+%   as {X, y} without any datastore-format ambiguity. Reads via imageDatastore
+%   (the same reader used for training) - raw imread can reject ".jpg" on some
+%   MATLAB Online configs ("File format jpg is not supported").
+    imds = imageDatastore(cellstr(paths(:)));
     n = numel(paths);
     X = zeros(inSz(1), inSz(2), 3, n, 'single');
     for i = 1:n
-        X(:,:,:,i) = benGrahamCell(imread(char(paths(i))), inSz);
+        X(:,:,:,i) = benGrahamCell(readimage(imds, i), inSz);
     end
     y = y(:);
 end
