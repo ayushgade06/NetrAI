@@ -14,6 +14,9 @@ function startup_netra()
     root = fileparts(mfilename('fullpath'));
     addpath(root);                       % +netra package + NETRA_App live here
     addpath(fullfile(root, 'tools'));    % seedMockRegistry (Phase 1)
+    addpath(fullfile(root, 'training'));  % train_quality / train_grader (Track D)
+    addpath(fullfile(root, 'validation')); % eval_* / run_ablation / run_external
+    addpath(fullfile(root, 'tests'));    % realImage + fixtures used by validation
 
     fprintf('NETRA startup\n');
     fprintf('  project root : %s\n', root);
