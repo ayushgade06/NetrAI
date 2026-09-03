@@ -823,12 +823,16 @@ classdef NETRA_App < handle
             app.QGHandles.canvas = netra.ui.imageCanvas(ip.Grid);
 
             % right: gauge + subscores + advice (row 2, col 2)
-            rp = uipanel(g, 'BorderType','none','BackgroundColor', t.color.bg);
+            % Scrollable so the action bar (Continue/Retake) is always reachable
+            % on short windows; all rows are fixed/'fit' so the panel overflows
+            % and shows a scrollbar instead of clipping the bottom row.
+            rp = uipanel(g, 'BorderType','none','BackgroundColor', t.color.bg, ...
+                'Scrollable','on');
             rp.Layout.Row = 2; rp.Layout.Column = 2;
             rg = uigridlayout(rp, [6 1], ...
-                'RowHeight', {150,'fit','fit','fit','1x','fit'}, ...
+                'RowHeight', {150,'fit','fit','fit','fit','fit'}, ...
                 'RowSpacing', t.space.gapLg, 'Padding',[0 0 0 0], ...
-                'BackgroundColor', t.color.bg);
+                'BackgroundColor', t.color.bg, 'Scrollable','on');
 
             gp = app.titledPanel(rg, 'Quality Score');
             qmin = app.Config.thresholds.quality.gradeableScoreMin;
