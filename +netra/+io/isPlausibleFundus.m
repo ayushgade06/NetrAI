@@ -81,7 +81,13 @@ function [isFundus, score, detail] = isPlausibleFundus(img, cfg)
     % Reward R being the largest and B the smallest; map the R-share above an
     % equal-thirds baseline (0.333) into 0..1.
     rShare = mR / denom;
-    redOrder = double(mR >= mG) * 0.5 + double(mG >= mB) * 0.5;   % 0,0.5,1
+    % redOrder rewards STRICT R>G>B channel separation. A grayscale image
+    % (R==G==B, e.g. a checkerboard) has zero separation and must NOT score as
+    % red-dominant: measure the R-over-G and G-over-B margins relative to the
+    % mean level, not just >= ordering (which a grayscale image satisfies).
+    lvl = max(1, denom/3);
+    redOrder = max(0, min(1, (mR - mG)/lvl / 0.15)) * 0.5 + ...
+               max(0, min(1, (mG - mB)/lvl / 0.15)) * 0.5;
     detail.redScore = max(0, min(1, (rShare - 0.30) / 0.25)) * 0.5 + redOrder * 0.5;
 
     % --- blend -----------------------------------------------------------

@@ -69,8 +69,18 @@ classdef tFovMask < matlab.unittest.TestCase
             % near-black fraction in the four 12% corner squares; require it
             % below a documented bound (0.35 - corners still hold some disc
             % falloff, but the wide black border must be removed).
-            BOUND = 0.35;
-            img = tc.Fundi{1};
+            % Use a REAL fundus when available: a synthetic disc is a perfect
+            % inscribed circle, so square-crop leaves ~21% (1 - pi/4) black
+            % corners by geometry alone, and thin discs even more - a synthetic
+            % artefact, not a crop defect. Real fundus captures fill the frame
+            % more realistically. Fall back to the synthetic disc on a fresh
+            % clone (bound relaxed there for the inscribed-circle geometry).
+            realImg = realImage("any", 0);
+            if ~isempty(realImg)
+                img = realImg; BOUND = 0.35;
+            else
+                img = tc.Fundi{1}; BOUND = 0.45;   % inscribed-disc corners
+            end
             [mask, ~] = netra.preproc.fovMask(img, tc.Cfg);
             [out, ~, ~] = netra.preproc.cropResize(img, mask, tc.Cfg);
             lum = 0.299*double(out(:,:,1)) + 0.587*double(out(:,:,2)) + 0.114*double(out(:,:,3));
