@@ -29,6 +29,7 @@ classdef NETRA_App < handle
         DevMode      logical = false            % dev-only verdict override
         ReviewTimer                             % stopwatch timer object
         ReviewStart                             % datetime when review began
+        ReviewingUid string = ""                % uid of the case open in Case Review
         ReviewerID   string = "reviewer01"      % logged as the review author
         QueueTable   table                      % cached queue
         CPHandles    struct = struct()          % Capacity Planner handles
@@ -1742,6 +1743,7 @@ classdef NETRA_App < handle
             function localOpen()
                 cr = app.mockCaseFromRow(row);
                 app.CurrentCase = cr;
+                app.ReviewingUid = string(cr.meta.uid);   % which queue row is on screen
                 app.CRHandles.uidLabel.Text = "Case: " + cr.meta.uid;
 
                 for k = 1:4
@@ -1832,10 +1834,15 @@ classdef NETRA_App < handle
                     fprintf(2, 'logReview failed for %s: %s\n', uid, ME.message);
                 end
             end
-            % advance queue
+            % advance queue: remove the case we actually reviewed (by uid, not a
+            % fixed row 1 - the reviewer may have opened any selected row).
             remaining = 0;
             if ~isempty(app.QueueTable) && height(app.QueueTable) > 0
-                app.QueueTable(1,:) = [];
+                if strlength(app.ReviewingUid) > 0
+                    app.QueueTable(string(app.QueueTable.uid) == app.ReviewingUid, :) = [];
+                else
+                    app.QueueTable(1,:) = [];           % fallback: front of queue
+                end
                 remaining = height(app.QueueTable);
             end
             app.noteToast(sprintf('Reviewed in %.0fs. %d remaining', secs, remaining));
