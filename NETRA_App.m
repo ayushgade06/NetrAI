@@ -1195,9 +1195,27 @@ classdef NETRA_App < handle
             g = uigridlayout(p, [1 4], 'Padding',[0 0 0 0], ...
                 'ColumnSpacing', t.space.gapSm, 'BackgroundColor', t.color.bg);
             app.mkButton(g, 'Generate Report', @() app.noteToast('Report generation: Available in Phase 8'), t.color.panelAlt);
-            app.mkButton(g, 'Send to Review Queue', @() app.noteToast('Sent to review queue (mock).'), t.color.info);
+            app.mkButton(g, 'Send to Review Queue', @() app.onSendToQueue(), t.color.info);
             app.WBHandles.btnAutoClear = app.mkButton(g, 'Auto-Clear', @() app.onAutoClear(), t.color.pass);
             app.mkButton(g, 'Next Case', @() app.noteToast('Next case (mock).'), t.color.panelAlt);
+        end
+
+        function onSendToQueue(app)
+            % The case is already persisted by the pipeline (runPipeline calls
+            % store.save). This just confirms and jumps to the queue so the
+            % clinician sees it - no separate "send" step is needed.
+            if isempty(app.CurrentCase)
+                uialert(app.Fig, 'No case loaded.', 'Nothing to send'); return;
+            end
+            dec = app.CurrentCase.routing.decision;
+            if dec ~= "REVIEW_QUEUE"
+                uialert(app.Fig, sprintf(['This case routed to %s, not the ' ...
+                    'review queue. Only grade >=2 / low-confidence cases queue.'], dec), ...
+                    'Not queued');
+                return;
+            end
+            app.noteToast('Case is in the review queue (saved by the pipeline).');
+            app.switchView("Review Queue");   % refreshes on entry
         end
 
         function onAutoClear(app)
@@ -2105,6 +2123,15 @@ classdef NETRA_App < handle
             % Leaving Case Review stops the stopwatch.
             if name ~= "Case Review"
                 app.stopReviewTimer();
+            end
+
+            % Refresh data-driven views on entry so they reflect the current
+            % registry (nav alone never re-queried them -> "queue not updating").
+            switch name
+                case "Review Queue"
+                    app.refreshQueue("All");
+                case "Dashboard"
+                    app.refreshDashboard();
             end
         end
 

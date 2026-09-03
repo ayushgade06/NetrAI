@@ -19,17 +19,26 @@ function T = internalLoadRegistry(regPath)
         return;
     end
 
-    % Prefer the real registry when it has rows.
+    % Merge the fictional mock seed with any real ingested cases so the demo
+    % queue/dashboard stay populated after live screenings (real rows win on a
+    % uid collision). Real registry alone would starve the 40-case demo queue.
     R = netra.store.registry();
-    if ~isempty(R)
-        T = R;
-        return;
-    end
-
-    % Fall back to the fictional mock seed.
     root = netra.store.storeRoot();            % overridable via NETRA_STORE_ROOT
     seedPath = fullfile(root, 'data', 'mock', 'registry_seed.mat');
-    T = loadTableOr(seedPath, @emptyMockRegistry);
+    S = loadTableOr(seedPath, @emptyMockRegistry);
+    T = mergeRegistries(R, S);
+end
+
+% ------------------------------------------------------------------------
+function T = mergeRegistries(R, S)
+%MERGEREGISTRIES  Union real (R) + mock seed (S) on shared columns; R wins.
+    if isempty(R), T = S; return; end
+    if isempty(S), T = R; return; end
+    % Drop mock rows whose uid already exists in the real registry.
+    S = S(~ismember(string(S.uid), string(R.uid)), :);
+    % Reconcile to shared columns so vertcat never fails on schema drift.
+    common = intersect(R.Properties.VariableNames, S.Properties.VariableNames, 'stable');
+    T = [R(:, common); S(:, common)];
 end
 
 % ------------------------------------------------------------------------
