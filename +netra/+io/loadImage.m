@@ -49,9 +49,21 @@ function [img, info] = loadImage(path)
     % Probe metadata, then decode. imfinfo/imread throw on corrupt files; wrap
     % both so the error identifier is NETRA-prefixed and the batch loop can
     % skip the file cleanly.
+    % imfinfo/imread determine format from the filename, which is broken for the
+    % ".jpg" extension on MATLAB Online; pass the format explicitly (derived from
+    % the extension) so both succeed. netra.io.readImageFile applies the same
+    % workaround for the pixel decode.
+    [~,~,ext] = fileparts(char(path));
+    fmtHint = lower(erase(string(ext), "."));
+    if any(fmtHint == ["jpg","jpeg","jpe","jfif"]), fmtHint = "jpg"; end
+    if any(fmtHint == ["tif","tiff"]), fmtHint = "tif"; end
     try
-        meta = imfinfo(path);
-        raw  = imread(path);
+        if fmtHint ~= ""
+            try, meta = imfinfo(path, char(fmtHint)); catch, meta = imfinfo(path); end
+        else
+            meta = imfinfo(path);
+        end
+        raw  = netra.io.readImageFile(path);
     catch ME
         error('NETRA:io:unreadable', ...
             'Cannot read image "%s": %s', path, ME.message);

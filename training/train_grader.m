@@ -158,7 +158,11 @@ function ds = imgTable(paths, y, inSz)
 %   row that trainNetwork accepts as BOTH training and validation data. Without
 %   'same', trainNetwork rejects the validation datastore ("Invalid validation
 %   data").
-    imds = imageDatastore(cellstr(paths));
+    % Custom ReadFcn: the default imageDatastore reader is imread, which fails on
+    % ".jpg" on MATLAB Online (see netra.io.readImageFile). Route reads through
+    % the robust explicit-format reader.
+    imds = imageDatastore(cellstr(paths), ...
+        'ReadFcn', @(p) netra.io.readImageFile(p));
     lds  = arrayDatastore(y(:), 'OutputType', 'same');
     ds0  = combine(imds, lds);
     ds   = transform(ds0, @(c) {benGrahamCell(c{1}, inSz), c{2}});
@@ -170,11 +174,10 @@ function [X, y] = preprocArray(paths, y, inSz)
 %   as {X, y} without any datastore-format ambiguity. Reads via imageDatastore
 %   (the same reader used for training) - raw imread can reject ".jpg" on some
 %   MATLAB Online configs ("File format jpg is not supported").
-    imds = imageDatastore(cellstr(paths(:)));
     n = numel(paths);
     X = zeros(inSz(1), inSz(2), 3, n, 'single');
     for i = 1:n
-        X(:,:,:,i) = benGrahamCell(readimage(imds, i), inSz);
+        X(:,:,:,i) = benGrahamCell(netra.io.readImageFile(paths(i)), inSz);
     end
     y = y(:);
 end

@@ -29,7 +29,7 @@ function img = realImage(kind, n)
     for sub = ["train_images","val_images","test_images"]
         p = fullfile(aptos, sub, char(stem) + ".jpg");
         if isfile(p)
-            img = imread(p);
+            img = netra.io.readImageFile(p);   % robust .jpg read (MATLAB Online)
             if size(img,3) == 1, img = repmat(img,1,1,3); end
             img = im2uint8(img);
             if n > 0, img = squareResize(img, n); end
