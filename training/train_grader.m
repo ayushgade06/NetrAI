@@ -148,9 +148,14 @@ function [imgs, labels] = loadSplitTable(root, aptos, which)
 end
 
 function ds = imgTable(paths, y, inSz)
-%IMGTABLE  imageDatastore with Ben-Graham preprocessing + resize to inSz.
+%IMGTABLE  Combined image+label datastore with Ben-Graham preprocessing.
+%   arrayDatastore needs OutputType 'same' so each label read is a scalar
+%   categorical (not a 1x1 cell); the transform then returns a {image, label}
+%   row that trainNetwork accepts as BOTH training and validation data. Without
+%   'same', trainNetwork rejects the validation datastore ("Invalid validation
+%   data").
     imds = imageDatastore(cellstr(paths));
-    lds  = arrayDatastore(y);
+    lds  = arrayDatastore(y(:), 'OutputType', 'same');
     ds0  = combine(imds, lds);
     ds   = transform(ds0, @(c) {benGrahamCell(c{1}, inSz), c{2}});
 end
