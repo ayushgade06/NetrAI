@@ -132,8 +132,8 @@ function fig = textPage(R)
     y = putBlock(ax, x, y, R.provenance, 9, 'normal', 'Monospaced');
     y = y - 0.008;
 
-    y = putLine(ax, x, y, R.timestampLine, 9, 'normal', [0.3 0.3 0.3]);
-    y = putLine(ax, x, y, R.versionLine, 9, 'normal', [0.3 0.3 0.3]);
+    y = putLine(ax, x, y, R.timestampLine, 9, 'normal', [0.15 0.15 0.15]);
+    y = putLine(ax, x, y, R.versionLine, 9, 'normal', [0.15 0.15 0.15]);
 
     % Disclaimer footer, pinned near the bottom regardless of content height.
     text(ax, 0.5, 0.045, char(R.disclaimer), 'Units', 'normalized', ...

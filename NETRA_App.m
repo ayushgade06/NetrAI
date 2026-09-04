@@ -1195,10 +1195,24 @@ classdef NETRA_App < handle
             p = uipanel(parent, 'BorderType','none','BackgroundColor', t.color.bg);
             g = uigridlayout(p, [1 4], 'Padding',[0 0 0 0], ...
                 'ColumnSpacing', t.space.gapSm, 'BackgroundColor', t.color.bg);
-            app.mkButton(g, 'Generate Report', @() app.noteToast('Report generation: Available in Phase 8'), t.color.panelAlt);
+            app.mkButton(g, 'Generate Report', @() app.onGenerateReport(), t.color.panelAlt);
             app.mkButton(g, 'Send to Review Queue', @() app.onSendToQueue(), t.color.info);
             app.WBHandles.btnAutoClear = app.mkButton(g, 'Auto-Clear', @() app.onAutoClear(), t.color.pass);
             app.mkButton(g, 'Next Case', @() app.noteToast('Next case (mock).'), t.color.panelAlt);
+        end
+
+        function onGenerateReport(app)
+            if isempty(app.CurrentCase)
+                app.noteToast('No case loaded.'); return;
+            end
+            try
+                pdf = netra.report.generate(app.CurrentCase, app.Config);
+                app.CurrentCase.report.pdfPath = string(pdf);
+                app.noteToast("Report saved: " + pdf);
+                try, winopen(char(pdf)); catch, end   % opens the PDF (best-effort)
+            catch ME
+                app.noteToast("Report failed: " + string(ME.message));
+            end
         end
 
         function onSendToQueue(app)
